@@ -1,0 +1,21 @@
+class H5Loader(PyScriptObject):
+
+    def __init__(self):
+        self.data.valid_types = ['HxUniformScalarField3']
+        self.do_it = HxPortDoIt(self, 'apply', 'Apply')
+        self.input_file = HxPortFilename(self, 'inputFile', 'Input File')
+        self.input_file.mode = HxPortFilename.EXISTING_FILE
+        self.sub_path = 'volumes/raw'
+    def update(self):
+        pass
+
+    def compute(self):
+        if not self.do_it.was_hit:
+            return
+        if self.data.source() is None:
+            return
+
+        from h5py import File
+        result = hx_project.create('HxUniformScalarField3')
+        with File(self.input_file.filenames) as f:
+            result.set_array(f[self.sub_path][:])
