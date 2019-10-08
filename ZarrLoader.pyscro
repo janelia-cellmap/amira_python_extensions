@@ -1,0 +1,82 @@
+import zarr
+from pathlib import Path
+import dask
+_container_extensions = ('.zarr', '.n5')
+
+def split_path_at_container(path):
+        # check whether a path contains a valid file path to a container file, and if so which container format it is
+        result = None
+        pathobj = Path(path)
+        if pathobj.suffix in _container_extensions:
+            result = [path, '']
+        else:
+            for parent in pathobj.parents:
+                if parent.suffix in _container_extensions:
+                    result = path.split(parent.suffix)
+                    result[0] += parent.suffix
+        return result
+
+
+class ZarrLoader(PyScriptObject):
+    def __init__(self):        
+        self.data.valid_types = ['HxUniformScalarField3']
+        self.do_it = HxPortDoIt(self, 'apply', 'Apply')
+        self.input_file = HxPortFilename(self, 'inputFile', 'Input File')
+        self.input_file.mode = HxPortFilename.LOAD_DIRECTORY
+        self.container = None
+        self.dataset = None
+        self.container_path = None
+        self.dataset_path = None
+
+        self.subvolume_limit_textboxes = dict()
+        self._dimensions = ('z', 'y', 'x')
+        for dim in self._dimensions:
+            dim_disp = dim.upper()
+            self.subvolume_limit_textboxes[dim] = HxPortIntTextN(self, 
+                                                                label='{0} limits'.format(dim_disp, 
+                                                                name='{0}_lims'.format(dim)))
+                    
+            self.subvolume_limit_textboxes[dim].texts = [HxPortIntTextN.IntText(label="Start", value=0),
+                                                        HxPortIntTextN.IntText(label="Stop", value=0)]
+                
+        self.slices = {d: slice(0,1) for d in self._dimensions} 
+    
+
+    def update(self):
+        if self.input_file.filenames is not None and self.dataset is None:
+            self.container_path, self.dataset_path = split_path_at_container(self.input_file.filenames)
+            self.container = self.access_container()
+            self.dataset = self.container[self.dataset_path]
+
+            for ind, dim in enumerate(self._dimensions):
+                for tb in self.subvolume_limit_textboxes[dim].texts:
+                    tb.clamp_range = (0, self.dataset.shape[ind])
+
+            assert len(self.dataset.shape) == 3
+        
+        if self.dataset is not None:
+            for d in self._dimensions:
+               self.slices[d] = slice(self.subvolume_limit_textboxes[d].texts[0].value, self.subvolume_limit_textboxes[d].texts[1].value)  
+        
+        pass
+
+    def access_container(self):       
+        container_extension = Path(self.container_path).suffix
+        store_path = None
+        if container_extension == '.n5':
+            store_path = zarr.N5Store(self.container_path)
+        elif container_extension == '.zarr':
+            store_path = self.container_path
+
+        container = zarr.open(store=store_path, mode='r')
+        return container
+
+    def compute(self):
+        
+        if not self.do_it.was_hit:
+            return
+        if self.data.source() is None:
+            return
+
+        result = hx_project.create('HxUniformScalarField3')
+        result.set_array(self.container[self.dataset_path][tuple(self.slices.values())])
