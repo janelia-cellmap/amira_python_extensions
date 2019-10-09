@@ -1,6 +1,7 @@
 import zarr
 from pathlib import Path
-import dask
+#import dask.array as da
+import numpy as np
 _container_extensions = ('.zarr', '.n5')
 
 def split_path_at_container(path):
@@ -16,6 +17,21 @@ def split_path_at_container(path):
                     result[0] += parent.suffix
         return result
 
+def get_resolution_and_offset(dataset):
+    resolution = [1] * dataset.ndim 
+    offset = [0] * dataset.ndim
+    attrs = dataset.attrs
+    if 'resolution' in attrs.keys() and 'offset' in attrs.keys():
+        # reverse the order to make it z,y,x
+        resolution = dataset.attrs['resolution'][::-1]
+        offset = dataset.attrs['offset'][::-1]
+    elif 'pixelResolution' in attrs.keys(): 
+        resolution = dataset.attrs['pixelResolution']['dimensions']
+        offset = [0] * len(resolution)
+    else:
+        print('Resolution and offset could not be determined from metadata. Using default: Resolution = (1,1,1) nm, Offset = (0,0,0)')
+    print('Updating resolution and offset to {0}, {1}'.format(resolution, offset))
+    return resolution, offset
 
 class ZarrLoader(PyScriptObject):
     def __init__(self):        
@@ -27,26 +43,31 @@ class ZarrLoader(PyScriptObject):
         self.dataset = None
         self.container_path = None
         self.dataset_path = None
+        self.resolution = None
+        self.offset = None
 
-        self.subvolume_limit_textboxes = dict()
         self._dimensions = ('z', 'y', 'x')
+        self.subvolume_limit_textboxes = dict()
+        
         for dim in self._dimensions:
             dim_disp = dim.upper()
             self.subvolume_limit_textboxes[dim] = HxPortIntTextN(self, 
-                                                                label='{0} limits'.format(dim_disp, 
-                                                                name='{0}_lims'.format(dim)))
+                                                                 label='{0} limits'.format(dim_disp, 
+                                                                 name='{0}_lims'.format(dim)))
                     
             self.subvolume_limit_textboxes[dim].texts = [HxPortIntTextN.IntText(label="Start", value=0),
                                                         HxPortIntTextN.IntText(label="Stop", value=0)]
                 
-        self.slices = {d: slice(0,1) for d in self._dimensions} 
+        self.slices = {d: slice(0, 1) for d in self._dimensions} 
     
 
     def update(self):
-        if self.input_file.filenames is not None and self.dataset is None:
+        # bug: this condition doesn't catch when the dataset has changed
+        if self.input_file.is_new and self.input_file.filenames is not None:
             self.container_path, self.dataset_path = split_path_at_container(self.input_file.filenames)
             self.container = self.access_container()
             self.dataset = self.container[self.dataset_path]
+            self.resolution, self.offset = get_resolution_and_offset(self.dataset)
 
             for ind, dim in enumerate(self._dimensions):
                 for tb in self.subvolume_limit_textboxes[dim].texts:
@@ -54,7 +75,7 @@ class ZarrLoader(PyScriptObject):
 
             assert len(self.dataset.shape) == 3
         
-        if self.dataset is not None:
+        if any(s.is_new for s in self.subvolume_limit_textboxes.values()):
             for d in self._dimensions:
                self.slices[d] = slice(self.subvolume_limit_textboxes[d].texts[0].value, self.subvolume_limit_textboxes[d].texts[1].value)  
         
@@ -79,4 +100,24 @@ class ZarrLoader(PyScriptObject):
             return
 
         result = hx_project.create('HxUniformScalarField3')
-        result.set_array(self.container[self.dataset_path][tuple(self.slices.values())])
+        slices_ = tuple(self.slices[d] for d in self._dimensions)
+        
+        array = self.container[self.dataset_path][slices_].T
+        shape_native_res = ((s-1) * r for s,r in zip(array.shape, self.resolution[::-1]))
+        
+        # amira doesn't like numpy uint64 or uint32
+        if array.dtype in (np.dtype('uint64'), np.dtype('uint32')):
+            array = array.astype('uint16')
+        if array.dtype == np.dtype('int64'):
+            array = array.astype('int32')
+        
+        # for a 3D array with dimensions numbered [0,1,2], amira assigns named dimensions ['x','y','z'] 
+        # so everything has to be flipped relative to the pythonic indexing scheme
+        
+        bbox_starts = tuple((r * s.start) + o for r, s, o in zip(self.resolution, slices_, self.offset))[::-1]
+        bbox_stops = tuple(o + s for o,s in zip(bbox_starts, shape_native_res)) 
+
+        result.bounding_box = bbox_starts, bbox_stops
+        result.set_array(array)
+        result.name = self.dataset_path
+        
