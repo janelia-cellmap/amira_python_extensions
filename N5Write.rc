@@ -1,0 +1,20 @@
+#############################################################
+# .rc for pyscro N5Write
+#############################################################
+
+module -name "N5Write" \
+-primary "HxUniformScalarField3" \
+-package "py_core" \
+-category "{Python Scripts}" \
+-proc {
+        set this [[create HxPythonScriptObject] setLabel "Write N5"]
+        "$this" startStop hideMaskIncrease
+        "$this" filename hideMaskIncrease
+        "$this" filename setValue $AMIRA_ROOT/share/python_script_objects/N5Write.pyscro
+        "$this" startStop hit 0
+        "$this" fire
+        if { [exists $PRIMARY] } {
+            $this data connect $PRIMARY
+            $this fire
+        }
+    }

@@ -1,0 +1,20 @@
+#############################################################
+# .rc for pyscro N5Read
+#############################################################
+
+module -name "N5Read" \
+-primary "HxUniformScalarField3" \
+-package "py_core" \
+-category "{Python Scripts}" \
+-proc {
+        set this [[create HxPythonScriptObject] setLabel "Read N5"]
+        "$this" startStop hideMaskIncrease
+        "$this" filename hideMaskIncrease
+        "$this" filename setValue $AMIRA_ROOT/share/python_script_objects/N5Read.pyscro
+        "$this" startStop hit 0
+        "$this" fire
+        if { [exists $PRIMARY] } {
+            $this data connect $PRIMARY
+            $this fire
+        }
+    }
