@@ -1,12 +1,11 @@
 import zarr
 from pathlib import Path
-import dask.array as da
 import numpy as np
 _container_extensions = ('.zarr', '.n5')
 
 def split_path_at_container(path):
     # check whether a path contains a valid file path to a container file, and if so which container format it is
-    result = None
+    result = None, None
     pathobj = Path(path)
     if pathobj.suffix in _container_extensions:
         result = [path, '']
@@ -19,7 +18,7 @@ def split_path_at_container(path):
 
 def get_resolution_and_offset(dataset):
     resolution = [1] * dataset.ndim 
-    offset = [0] * dataset.ndim
+    offset = [.5] * dataset.ndim
     attrs = dataset.attrs
     if 'resolution' in attrs.keys() and 'offset' in attrs.keys():
         # reverse the order to make it z,y,x
@@ -29,7 +28,7 @@ def get_resolution_and_offset(dataset):
         resolution = dataset.attrs['pixelResolution']['dimensions']
         offset = [0] * len(resolution)
     else:
-        print('Resolution and offset could not be determined from metadata. Using default: Resolution = (1,1,1) nm, Offset = (0,0,0) nm')
+        print('Resolution and offset could not be determined from metadata. Using default: Resolution = {0} nm, Offset = {1} nm'.format(resolution, offset))
     return resolution, offset
 
 
@@ -39,6 +38,7 @@ class N5Read(PyScriptObject):
         self.do_it = HxPortDoIt(self, 'read', 'Load N5')
         self.input_dir = HxPortFilename(self, 'inputDir', 'Input Directory')
         self.input_dir.mode = HxPortFilename.LOAD_DIRECTORY
+        self.info = HxPortInfo(self, 'array_info', 'Array info')
         self.container = None
         self.dataset = None
         self.container_path = None
@@ -46,8 +46,9 @@ class N5Read(PyScriptObject):
         self.resolution = None
         self.offset = None
 
-        self._dimensions = ('z', 'y', 'x')
+        self._dimensions = ('x', 'y', 'z')
         self.slice_textboxes = dict()
+        self.update_info_box()        
         
         for dim in self._dimensions:
             dim_disp = dim.upper()
@@ -66,10 +67,18 @@ class N5Read(PyScriptObject):
     def update(self):
         if self.input_dir.is_new and self.input_dir.filenames is not None:
             self.container_path, self.dataset_path = split_path_at_container(self.input_dir.filenames)
+            if self.container_path is None:
+                hx_message.error(message='You have not selected a folder that represents an N5 array.')
+                return
             self.container = self.access_container(mode='r')
             self.dataset = self.container[self.dataset_path]
+            # validate that user selected a dataset
+            if not isinstance(self.dataset, zarr.core.Array):
+                hx_message.error(message='You have not selected a folder that represents an N5 array.')
+                return
+                
             self.resolution, self.offset = get_resolution_and_offset(self.dataset)
-
+            self.update_info_box()
             for ind, dim in enumerate(self._dimensions):
                 for tb in self.slice_textboxes[dim].texts:
                     tb.clamp_range = (0, self.dataset.shape[ind])
@@ -82,7 +91,13 @@ class N5Read(PyScriptObject):
                self.slices[d] = slice(self.slice_textboxes[d].texts[0].value, self.slice_textboxes[d].texts[1].value)          
         pass
 
+    def update_info_box(self):
+        if isinstance(self.dataset, zarr.core.Array):
+            self.info.text = '{0} array with shape {1}'.format(self.dataset.dtype, self.dataset.shape[::-1])        
+        else:
+            self.info.text = 'No array selected'
 
+    
     def access_container(self, mode):       
         container_extension = Path(self.container_path).suffix
         store_path = None
@@ -100,7 +115,7 @@ class N5Read(PyScriptObject):
             return
 
         result = hx_project.create('HxUniformScalarField3')
-        slices_ = tuple(self.slices[d] for d in self._dimensions)
+        slices_ = tuple(self.slices[d] for d in self._dimensions)[::-1]
         
         array = self.container[self.dataset_path][slices_].T
         shape_native_res = ((s-1) * r for s, r in zip(array.shape, self.resolution[::-1]))
