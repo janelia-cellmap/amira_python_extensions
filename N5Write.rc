@@ -7,4 +7,4 @@ module -name "N5Write" \
 -file "share/python_script_objects/N5Write.pyscro" \
 -primary "HxUniformScalarField3" \
 -package "py_core" \
--category "{Python Scripts}" \
+-category "{Python Scripts}"
