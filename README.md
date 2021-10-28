@@ -19,7 +19,6 @@ set logfile=%userprofile%\amira_python_extension_log.txt
 %userprofile%\AppData\Local\Programs\Enthought\edm\edm.bat run -e hxEnv pip install zarr numcodecs olefile et_xmlfile dask[array] >>%logfile% 2>&1
 
 setx HX_FORCE_PYTHON_PATH %userprofile%\.edm\envs\hxEnv >>%logfile% 2>&1
-
 ```
 
 Wait for each step to finish before proceeding to the next. Some may take several seconds.
