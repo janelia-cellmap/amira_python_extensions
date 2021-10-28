@@ -6,7 +6,7 @@ Each plugin is composed of two files: a $PLUGIN_NAME.rc file and a $PLUGIN_NAME.
 
 To use a plugin, copy both .rc and .pyscro into the $AMIRA_ROOT/share/python_script_objects/ directory before Amira starts up. You can also run (as Administrator) `copy_files.bat`, by double clicking, to copy all the .rc and .pyscro files.
 
-To setup the necessary python environment, run Command Prompt as Administrator. Copy and paste the following commands one at a time into the prompt:
+To setup the necessary python environment, run Command Prompt as Administrator. Then copy and paste the following commands one at a time into the prompt:
 ```bash
 curl https://package-data.enthought.com/edm/win_x86_64/2.0/edm_2.0.0_x86_64.msi -o %userprofile%\Downloads\edm_2.0.0_x86_64.msi
 
@@ -21,7 +21,7 @@ set logfile=%userprofile%\amira_python_extension_log.txt
 setx HX_FORCE_PYTHON_PATH %userprofile%\.edm\envs\hxEnv >>%logfile% 2>&1
 ```
 
-Wait for each step to finish before proceeding to the next. Some may take several seconds.
+Wait for each step to finish before proceeding to the next and follow the prompts for installing Enthought. Some steps may take several seconds.
 
 Once completed, open Amira and switch the `Python > Environment` to the 'User Environment' `hxEnv` if not already selected.
 
