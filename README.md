@@ -4,9 +4,9 @@ These plugins add functionality to Amira (tested on Amira 3D 2021.1).
 
 Each plugin is composed of two files: a $PLUGIN_NAME.rc file and a $PLUGIN_NAME.pyscro file.  
 
-To use a plugin, copy both .rc and .pyscro into the $AMIRA_ROOT/share/python_script_objects/ directory before Amira starts up. You can also run `copy_files.bat`, by double clicking, to copy all the .rc and .pyscro files.
+To use a plugin, copy both .rc and .pyscro into the $AMIRA_ROOT/share/python_script_objects/ directory before Amira starts up. You can also run (as Administrator) `copy_files.bat`, by double clicking, to copy all the .rc and .pyscro files.
 
-To setup the necessary python environment, run `setup_window_environment.bat` by double clicking it. Then in Amira, switch the `Python > Environment` to the 'User Environment' `hxEnv`.
+To setup the necessary python environment, run (as Administrator) `setup_window_environment.bat` by double clicking it. Then in Amira, switch the `Python > Environment` to the 'User Environment' `hxEnv`.
 
 ## `N5Read` instructions
 To load datasets from an N5 container, first open some data. It can be anything, e.g. one of the example datasets. (This step is necessary because Amira does not allow plugin-based data loaders) 
