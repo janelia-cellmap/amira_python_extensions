@@ -1,6 +1,6 @@
 # Python and TCL scripts for amira plugins
 
-These plugins add functionality to Amira (tested on Amira 2019.2).  
+These plugins add functionality to Amira (tested on Amira 3D 2021.1).  
 
 Each plugin is composed of two files: a $PLUGIN_NAME.rc file and a $PLUGIN_NAME.pyscro file.  
 
