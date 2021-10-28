@@ -4,7 +4,7 @@ These plugins add functionality to Amira (tested on Amira 3D 2021.1).
 
 Each plugin is composed of two files: a $PLUGIN_NAME.rc file and a $PLUGIN_NAME.pyscro file.  
 
-To download, select the green Code button, and "Download Zip". Extract the zip and proceed as follows:
+To download, select the green Code button above, and "Download Zip". Extract the zip and proceed as follows:
 
 To use a plugin, copy both .rc and .pyscro into the $AMIRA_ROOT/share/python_script_objects/ directory before Amira starts up. You can also run (as Administrator) `copy_files.bat`, by double clicking, to copy all the .rc and .pyscro files.
 
