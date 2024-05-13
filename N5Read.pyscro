@@ -19,7 +19,7 @@ def split_path_at_container(path):
 
 def get_resolution_and_offset(dataset):
     resolution = [1] * dataset.ndim 
-    offset = [.5] * dataset.ndim
+    offset = [0] * dataset.ndim
     attrs = dataset.attrs
     if 'resolution' in attrs.keys() and 'offset' in attrs.keys():
         # reverse the order to make it z,y,x

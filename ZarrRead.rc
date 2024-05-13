@@ -1,0 +1,10 @@
+#############################################################
+# .rc for pyscro ZarrRead
+#############################################################
+
+module -name "ZarrRead" \
+-language "python" \
+-file "share/python_script_objects/ZarrRead.pyscro" \
+-primary "HxUniformScalarField3" \
+-package "py_core" \
+-category "{Python Scripts}"
