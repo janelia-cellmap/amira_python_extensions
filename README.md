@@ -2,11 +2,11 @@
 
 These plugins add functionality to Amira (tested on Amira 3D 2021.1). 
 
-Each plugin is composed of two files: a $PLUGIN_NAME.rc file and a $PLUGIN_NAME.pyscro file.  
+Each plugin is composed of two files: a `$PLUGIN_NAME.rc` file and a `$PLUGIN_NAME.pyscro` file.  
 
 To download, select the green Code button above, and "Download Zip". Extract the zip and proceed as follows:
 
-To use a plugin, copy both .rc and .pyscro into the $AMIRA_ROOT/share/python_script_objects/ directory before Amira starts up. You can also run (as Administrator) `copy_files.bat`, by double clicking, to copy all the .rc and .pyscro files.
+To use a plugin, copy both `rc` and `pyscro` files into the `$AMIRA_ROOT/share/python_script_objects/` directory before Amira starts up. You can also run (as Administrator) `copy_files.bat`, by double clicking, to copy all the `rc` and `pyscro` files.
 
 To setup the necessary python environment, run Command Prompt as Administrator. Then copy and paste the following commands one at a time into the prompt:
 1. `curl https://package-data.enthought.com/edm/win_x86_64/2.0/edm_2.0.0_x86_64.msi -o %userprofile%\Downloads\edm_2.0.0_x86_64.msi`
