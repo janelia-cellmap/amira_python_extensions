@@ -4,17 +4,17 @@ import numpy as np
 import dask.array as da
 import os
 from typing import Union, List, Tuple
-_container_extensions = ('.zarr')
+_container_extension = '.zarr'
 
 def split_path_at_container(path: str):
     # check whether a path contains a valid file path to a container file, and if so which container format it is
     result = None, None
     pathobj = Path(path)
-    if pathobj.suffix in _container_extensions:
+    if pathobj.suffix==_container_extension:
         result = [path, '']
     else:
         for parent in pathobj.parents:
-            if parent.suffix in _container_extensions:
+            if parent.suffix==_container_extension:
                 result = path.split(parent.suffix)
                 result[0] += parent.suffix
     return result
@@ -52,7 +52,7 @@ def get_resolution_and_offset(ds: zarr.core.Array,
     multiscales = multiscales_group[0]
 
     if multiscales is not None:
-        print.info("Found multiscales attributes")
+        print("Found multiscales attributes")
         scale = os.path.split(ds.path)[1]
         
         if multiscales[0]["axes"]:
@@ -129,17 +129,19 @@ class ZarrRead(PyScriptObject):
         if self.input_dir.is_new and self.input_dir.filenames is not None:
             self.container_path, self.dataset_path = split_path_at_container(self.input_dir.filenames)
             if self.container_path is None:
-                hx_message.error(message='You have not selected a folder that represents a Zarr array.')
+                hx_message.error(message='You have not selected a folder that represents a Zarr array  aaaaaa.')
                 return
             self.container = self.access_container(mode='r')
             self.dataset = self.container[self.dataset_path]
             # validate that user selected a dataset
             if not isinstance(self.dataset, zarr.core.Array):
-                hx_message.error(message='You have not selected a folder that represents a Zarr array.')
+                hx_message.error(message=f'self.container_path={self.container_path},self.dataset_path={self.dataset_path}, self.dataset={type(self.dataset)}, self.container={type(self.container)}, self.dataset_path={type(self.dataset_path)} You have not selected a folder that represents a Zarr array bbbbbbb.')
                 return
-                
+            #hx_message.error(message="1")
             self.resolution, self.offset, self.units = get_resolution_and_offset(self.dataset, check_for_multiscale(access_parent(self.dataset)))
+            hx_message.error(message="2")
             self.update_info_box()
+            hx_message.error(message="3")
             for ind, dim in enumerate(self._dimensions):
                 for tb in self.slice_textboxes[dim].texts:
                     tb.clamp_range = (0, self.dataset.shape[::-1][ind])
@@ -160,8 +162,7 @@ class ZarrRead(PyScriptObject):
 
     
     def access_container(self, mode):       
-        store_path = None
-        store_path = self.container_path
+        store_path = zarr.NestedDirectoryStore(self.container_path)
         container = zarr.open(store=store_path, mode=mode)
         return container
 
