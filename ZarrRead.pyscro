@@ -1,0 +1,194 @@
+import zarr
+from pathlib import Path
+import numpy as np
+import dask.array as da
+import os
+from typing import Union, List, Tuple
+_container_extensions = ('.zarr')
+
+def split_path_at_container(path: str):
+    # check whether a path contains a valid file path to a container file, and if so which container format it is
+    result = None, None
+    pathobj = Path(path)
+    if pathobj.suffix in _container_extensions:
+        result = [path, '']
+    else:
+        for parent in pathobj.parents:
+            if parent.suffix in _container_extensions:
+                result = path.split(parent.suffix)
+                result[0] += parent.suffix
+    return result
+
+def access_parent(node: Union[zarr.core.Array, zarr.hierarchy.Group]) -> zarr.hierarchy.Group:
+    """
+    Get the parent (zarr.Group) of an input zarr array(ds).
+    """
+    parent_path = os.path.split(node.path)[0]
+    return zarr.hierarchy.group(store=node.store, path=parent_path)
+
+def check_for_multiscale(group: zarr.hierarchy.Group) -> Tuple[dict, zarr.hierarchy.Group]:
+    """check if multiscale attribute exists in the input group and for any parent level group
+    """
+    multiscales = group.attrs.get("multiscales", None)
+
+    if multiscales:
+        return (multiscales, group)
+
+    if group.path == "":
+        return (multiscales, group)
+
+    return check_for_multiscale(access_parent(group))
+
+
+def get_resolution_and_offset(ds: zarr.core.Array,
+                               multiscales_group: Tuple[dict, zarr.hierarchy.Group]) -> Tuple[List[float], List[float], List[str]]:
+    """checks multiscale attribute of the .zarr group
+        for voxel_size(scale), offset(translation) and units values
+    """
+
+    voxel_size = [1] * ds.ndim
+    offset = [0] * ds.ndim
+    units = ["nanometer"] * ds.ndim
+    multiscales = multiscales_group[0]
+
+    if multiscales is not None:
+        print.info("Found multiscales attributes")
+        scale = os.path.split(ds.path)[1]
+        
+        if multiscales[0]["axes"]:
+            units = [item["unit"] for item in multiscales[0]["axes"]]
+        else: 
+            print("Units are not defined in multiscales. Using default: Units = {0}".format(units))
+            
+        # get s0 level voxel_size and offset
+        for level in multiscales[0]["datasets"]:
+            if level["path"].lstrip("/") == scale:
+                for attr in level["coordinateTransformations"]:
+                    if attr["type"] == "scale":
+                        voxel_size = attr["scale"]
+                    elif attr["type"] == "translation":
+                        offset = attr["translation"]
+                return voxel_size, offset, units
+    else:
+        print('Multiscales attributes not found. Using default: Resolution = {0} nm, Offset = {1} nm'.format(voxel_size, offset))
+
+    return voxel_size, offset, units
+
+
+# def get_resolution_and_offset(dataset):
+#     resolution = [1] * dataset.ndim 
+#     offset = [0] * dataset.ndim
+#     attrs = dataset.attrs
+#     if 'resolution' in attrs.keys() and 'offset' in attrs.keys():
+#         # reverse the order to make it z,y,x
+#         resolution = dataset.attrs['resolution'][::-1]
+#         offset = dataset.attrs['offset'][::-1]
+#     elif 'pixelResolution' in attrs.keys(): 
+#         resolution = dataset.attrs['pixelResolution']['dimensions']
+#         offset = [0] * len(resolution)
+#     else:
+#         print('Resolution and offset could not be determined from metadata. Using default: Resolution = {0} nm, Offset = {1} nm'.format(resolution, offset))
+#     return resolution, offset
+
+
+class ZarrRead(PyScriptObject):
+    def __init__(self):        
+        self.data.valid_types = ['HxUniformScalarField3']
+        self.do_it = HxPortDoIt(self, 'read', 'Load Zarr')
+        self.input_dir = HxPortFilename(self, 'inputDir', 'Input Directory')
+        self.input_dir.mode = HxPortFilename.LOAD_DIRECTORY
+        self.info = HxPortInfo(self, 'array_info', 'Array info')
+        self.container = None
+        self.dataset = None
+        self.container_path = None
+        self.dataset_path = None
+        self.resolution = None
+        self.offset = None
+        self.units = None
+
+
+        self._dimensions = ('z', 'y', 'x')
+        self.slice_textboxes = dict()
+        self.update_info_box()        
+        
+        for dim in self._dimensions:
+            dim_disp = dim.upper()
+            self.slice_textboxes[dim] = HxPortIntTextN(self, 
+                                                       label='{0} limits'.format(dim_disp), 
+                                                       name='{0}_lims'.format(dim))
+                    
+            self.slice_textboxes[dim].texts = [HxPortIntTextN.IntText(label="Start", 
+                                                                      value=0),
+                                               HxPortIntTextN.IntText(label="Stop", 
+                                                                      value=0)]
+                
+        self.slices = {d: slice(0, 1) for d in self._dimensions} 
+    
+
+    def update(self):
+        if self.input_dir.is_new and self.input_dir.filenames is not None:
+            self.container_path, self.dataset_path = split_path_at_container(self.input_dir.filenames)
+            if self.container_path is None:
+                hx_message.error(message='You have not selected a folder that represents a Zarr array.')
+                return
+            self.container = self.access_container(mode='r')
+            self.dataset = self.container[self.dataset_path]
+            # validate that user selected a dataset
+            if not isinstance(self.dataset, zarr.core.Array):
+                hx_message.error(message='You have not selected a folder that represents a Zarr array.')
+                return
+                
+            self.resolution, self.offset, self.units = get_resolution_and_offset(self.dataset, check_for_multiscale(access_parent(self.dataset)))
+            self.update_info_box()
+            for ind, dim in enumerate(self._dimensions):
+                for tb in self.slice_textboxes[dim].texts:
+                    tb.clamp_range = (0, self.dataset.shape[::-1][ind])
+
+            assert len(self.dataset.shape) == 3
+        
+        # if any of the textboxes have changed, then update the corresponding slices
+        if any(s.is_new for s in self.slice_textboxes.values()):
+            for d in self._dimensions:
+               self.slices[d] = slice(self.slice_textboxes[d].texts[0].value, self.slice_textboxes[d].texts[1].value)          
+        pass
+
+    def update_info_box(self):
+        if isinstance(self.dataset, zarr.core.Array):
+            self.info.text = '{0} array with shape {1}'.format(self.dataset.dtype, self.dataset.shape[::-1])        
+        else:
+            self.info.text = 'No array selected'
+
+    
+    def access_container(self, mode):       
+        store_path = None
+        store_path = self.container_path
+        container = zarr.open(store=store_path, mode=mode)
+        return container
+
+    def compute(self):
+        
+        if not self.do_it.was_hit:
+            return
+
+        result = hx_project.create('HxUniformScalarField3')
+        slices_ = tuple(self.slices[d] for d in self._dimensions)[::-1]
+        array = da.from_array(self.container[self.dataset_path])[slices_].compute().T
+        shape_native_res = ((s-1) * r for s, r in zip(array.shape, self.resolution[::-1]))
+        
+        # amira doesn't like numpy uint64 or uint32
+        if array.dtype in (np.dtype('uint64'), np.dtype('uint32')):
+            array = array.astype('uint16')
+        if array.dtype == np.dtype('int64'):
+            array = array.astype('int32')
+        
+        # for a 3D array with dimensions numbered [0,1,2], amira assigns named dimensions ['x','y','z'] 
+        # so everything has to be flipped relative to the pythonic indexing scheme
+        # in amira, the bounding box defines the pixel size and position in space of the data. So we set the bounding box and origin in nanometers.
+        bbox_starts = tuple((r * s.start) + o for r, s, o in zip(self.resolution, slices_, self.offset))[::-1]
+        bbox_stops = tuple(o + s for o, s in zip(bbox_starts, shape_native_res)) 
+
+        result.bounding_box = bbox_starts, bbox_stops
+        result.set_array(array)
+        result.name = self.dataset_path
+        # connect the resulting 3D data to the zarr loader object
+        result.ports.master.connect(hx_project.get(self.name))

@@ -1,0 +1,65 @@
+import zarr
+from pathlib import Path
+_container_extensions = ('.zarr')
+
+
+def split_path_at_container(path: str):
+    # check whether a path contains a valid file path to a container file, and if so which container format it is
+    result = None
+    pathobj = Path(path)
+    if pathobj.suffix in _container_extensions:
+        result = [path, '']
+    else:
+        for parent in pathobj.parents:
+            if parent.suffix in _container_extensions:
+                result = path.split(parent.suffix)
+                result[0] += parent.suffix
+    return result
+
+
+class ZarrWrite(PyScriptObject):
+    def __init__(self):
+        self.data.valid_types = ['HxUniformScalarField3']                
+        self.do_it = HxPortDoIt(self, 'write', 'Save Zarr')
+        self.output_dir = HxPortFilename(self, 'outputDir', 'Output Directory')
+        self.output_dir.mode = HxPortFilename.LOAD_DIRECTORY
+        self.container = None
+        self.dataset = None
+        self.container_path = None
+        self.dataset_path = None        
+        self.slices = None
+
+    def update(self):
+        if self.output_dir.is_new and self.output_dir.filenames is not None:
+            self.container_path, self.dataset_path = split_path_at_container(self.output_dir.filenames)
+            self.container = self.access_container(mode='a')
+            self.dataset = self.container[self.dataset_path]
+        pass
+
+    def access_container(self, mode):       
+        store_path = self.container_path
+        container = zarr.open(store=store_path, mode=mode)
+        return container
+
+    def compute(self):
+        if not self.do_it.was_hit:
+            return
+        if self.data.source() is None:
+            return    
+        # Slices and array have to be transposed b/c amira uses x,y,z axis ordering but we use z,y,x for 
+        # zarr
+        self.slices = self.bbox_to_slices()
+        output = self.data.source().get_array().T
+        print('Preparing to save {0} to {1} using slices {2}'.format(output, self.dataset, self.slices))        
+        self.dataset[self.slices[::-1]] = output
+        print('Save complete')
+
+    def bbox_to_slices(self):
+        # convert the bounding box of the input data (real units) to a tuple of slices (indices)
+        shape = self.data.source().get_array().shape
+        bbox_starts, bbox_stops = self.data.source().bounding_box
+        # figure out the sampling resolution by dividing the extent of the data by its shape for each axis
+        rscale = tuple((bsto - bsta) / (s - 1) for bsto, bsta, s in zip(bbox_stops, bbox_starts, shape))
+        origins = tuple(int(bsta / r) for bsta, r in zip(bbox_starts, rscale))
+        slices = tuple(slice(o, o + s) for o,s in zip(origins, shape))
+        return slices
