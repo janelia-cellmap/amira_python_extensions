@@ -129,19 +129,16 @@ class ZarrRead(PyScriptObject):
         if self.input_dir.is_new and self.input_dir.filenames is not None:
             self.container_path, self.dataset_path = split_path_at_container(self.input_dir.filenames)
             if self.container_path is None:
-                hx_message.error(message='You have not selected a folder that represents a Zarr array  aaaaaa.')
+                hx_message.error(message='You have not selected a folder that represents a Zarr array.')
                 return
             self.container = self.access_container(mode='r')
             self.dataset = self.container[self.dataset_path]
             # validate that user selected a dataset
             if not isinstance(self.dataset, zarr.core.Array):
-                hx_message.error(message=f'self.container_path={self.container_path},self.dataset_path={self.dataset_path}, self.dataset={type(self.dataset)}, self.container={type(self.container)}, self.dataset_path={type(self.dataset_path)} You have not selected a folder that represents a Zarr array bbbbbbb.')
+                hx_message.error(message=f('You have not selected a folder that represents a Zarr array.'))
                 return
-            #hx_message.error(message="1")
             self.resolution, self.offset, self.units = get_resolution_and_offset(self.dataset, check_for_multiscale(access_parent(self.dataset)))
-            hx_message.error(message="2")
             self.update_info_box()
-            hx_message.error(message="3")
             for ind, dim in enumerate(self._dimensions):
                 for tb in self.slice_textboxes[dim].texts:
                     tb.clamp_range = (0, self.dataset.shape[::-1][ind])
