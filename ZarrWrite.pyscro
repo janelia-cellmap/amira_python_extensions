@@ -1,17 +1,16 @@
 import zarr
 from pathlib import Path
-_container_extensions = ('.zarr')
-
+_container_extension = '.zarr'
 
 def split_path_at_container(path: str):
     # check whether a path contains a valid file path to a container file, and if so which container format it is
-    result = None
+    result = None, None
     pathobj = Path(path)
-    if pathobj.suffix in _container_extensions:
+    if pathobj.suffix==_container_extension:
         result = [path, '']
     else:
         for parent in pathobj.parents:
-            if parent.suffix in _container_extensions:
+            if parent.suffix==_container_extension:
                 result = path.split(parent.suffix)
                 result[0] += parent.suffix
     return result
@@ -37,7 +36,7 @@ class ZarrWrite(PyScriptObject):
         pass
 
     def access_container(self, mode):       
-        store_path = self.container_path
+        store_path = zarr.NestedDirectoryStore(self.container_path)
         container = zarr.open(store=store_path, mode=mode)
         return container
 
@@ -51,7 +50,7 @@ class ZarrWrite(PyScriptObject):
         self.slices = self.bbox_to_slices()
         output = self.data.source().get_array().T
         print('Preparing to save {0} to {1} using slices {2}'.format(output, self.dataset, self.slices))        
-        self.dataset[self.slices[::-1]] = output
+        self.dataset['s0'] = output
         print('Save complete')
 
     def bbox_to_slices(self):

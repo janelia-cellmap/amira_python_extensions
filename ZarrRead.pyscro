@@ -74,23 +74,6 @@ def get_resolution_and_offset(ds: zarr.core.Array,
 
     return voxel_size, offset, units
 
-
-# def get_resolution_and_offset(dataset):
-#     resolution = [1] * dataset.ndim 
-#     offset = [0] * dataset.ndim
-#     attrs = dataset.attrs
-#     if 'resolution' in attrs.keys() and 'offset' in attrs.keys():
-#         # reverse the order to make it z,y,x
-#         resolution = dataset.attrs['resolution'][::-1]
-#         offset = dataset.attrs['offset'][::-1]
-#     elif 'pixelResolution' in attrs.keys(): 
-#         resolution = dataset.attrs['pixelResolution']['dimensions']
-#         offset = [0] * len(resolution)
-#     else:
-#         print('Resolution and offset could not be determined from metadata. Using default: Resolution = {0} nm, Offset = {1} nm'.format(resolution, offset))
-#     return resolution, offset
-
-
 class ZarrRead(PyScriptObject):
     def __init__(self):        
         self.data.valid_types = ['HxUniformScalarField3']
@@ -107,7 +90,7 @@ class ZarrRead(PyScriptObject):
         self.units = None
 
 
-        self._dimensions = ('z', 'y', 'x')
+        self._dimensions = ('x', 'y', 'z')
         self.slice_textboxes = dict()
         self.update_info_box()        
         
@@ -135,7 +118,7 @@ class ZarrRead(PyScriptObject):
             self.dataset = self.container[self.dataset_path]
             # validate that user selected a dataset
             if not isinstance(self.dataset, zarr.core.Array):
-                hx_message.error(message=f('You have not selected a folder that represents a Zarr array.'))
+                hx_message.error(message='You have not selected a folder that represents a Zarr array.')
                 return
             self.resolution, self.offset, self.units = get_resolution_and_offset(self.dataset, check_for_multiscale(access_parent(self.dataset)))
             self.update_info_box()
