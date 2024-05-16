@@ -51,33 +51,7 @@ class ZarrWrite(PyScriptObject):
         # zarr
         self.slices = self.bbox_to_slices()
         output = self.data.source().get_array().T
-        # print("locals #2")
-        # print(locals())
-        # #print(self.data.__dict__)
-        # print(dir(self.data))
-        # print(dir(self.data.source()))
-        # print(self.data.source().parameters)
-        # print(self.data.source().name)
-        # print(self.data.source().portnames)
-        # print(self.data.source().ports)
-        # print(dir(self.data.source().ports.PhysicalSize))
-        # print(self.data.source().ports.PhysicalSize._get_state())
-        # print(self.data.source().ports.PhysicalSize.label)
-        # print(self.data.source().ports.PhysicalSize.text)
-        # print(self.data.source().ports.VoxelSize.label)
-        # print(self.data.source().ports.VoxelSize.text)
-
-        # print(self.data.source().range)
-
-        # print(self.data.source().get_all_interface_names())
-        # print(self.data.source().__dict__)
-        # offset values (z, y, x order) 
-        offset = self.data.source().ports.PhysicalSize.text.split('from')[1].strip().split(', ')
-        # voxel size (z, y, x order)
-        voxel_size = self.data.source().ports.VoxelSize.text.split(" x ")[::-1]
-        #dataset name 
         ds_name = self.data.source().name.strip('-')
-
 
         print('Preparing to save {0} to {1} using slices {2}'.format(output, self.dataset, self.slices))        
         self.dataset[ds_name] = output
