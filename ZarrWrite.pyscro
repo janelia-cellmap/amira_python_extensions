@@ -27,6 +27,8 @@ class ZarrWrite(PyScriptObject):
         self.container_path = None
         self.dataset_path = None        
         self.slices = None
+        print("locals #1")
+        print(locals())
 
     def update(self):
         if self.output_dir.is_new and self.output_dir.filenames is not None:
@@ -49,9 +51,16 @@ class ZarrWrite(PyScriptObject):
         # zarr
         self.slices = self.bbox_to_slices()
         output = self.data.source().get_array().T
+
+        #dataset name 
+        ds_name = self.data.source().name.strip('-')
+        
         print('Preparing to save {0} to {1} using slices {2}'.format(output, self.dataset, self.slices))        
-        self.dataset['s0'] = output
+        self.dataset[ds_name] = output
+        self.add_multiscales_metadata(output)
+        print("Added voxel size and offset attributes")
         print('Save complete')
+
 
     def bbox_to_slices(self):
         # convert the bounding box of the input data (real units) to a tuple of slices (indices)
@@ -62,3 +71,36 @@ class ZarrWrite(PyScriptObject):
         origins = tuple(int(bsta / r) for bsta, r in zip(bbox_starts, rscale))
         slices = tuple(slice(o, o + s) for o,s in zip(origins, shape))
         return slices
+    
+    def add_multiscales_metadata(self, output_arr):
+        # dataset name
+        ds_name = self.data.source().name.strip('-')
+        # default order - z, y, x
+        axes = ['z', 'y', 'x']
+        #default units - nm
+        unit = 'nanometer'
+        # offset values, z, y, x order
+        offset = self.data.source().ports.PhysicalSize.text.split('from')[1].strip().split(', ')
+        # voxel size, z, y, x order
+        voxel_size = self.data.source().ports.VoxelSize.text.split(" x ")[::-1]        
+        z_attrs: dict = {"multiscales": [{}]}
+        z_attrs["multiscales"][0]["axes"] = [
+            {"name": axis, "type": "space", "unit": unit} for axis in axes
+        ]
+        z_attrs["multiscales"][0]["coordinateTransformations"] = [
+            {"scale": [1.0, 1.0, 1.0], "type": "scale"}
+        ]
+        z_attrs["multiscales"][0]["datasets"] = [
+            {
+                "coordinateTransformations": [
+                    {"scale": voxel_size, "type": "scale"},
+                    {"translation": offset, "type": "translation"},
+                ],
+                "path": ds_name,
+            }
+        ]
+
+        z_attrs["multiscales"][0]["name"] = ""
+        z_attrs["multiscales"][0]["version"] = "0.4"
+
+        self.dataset.attrs.update(z_attrs)
