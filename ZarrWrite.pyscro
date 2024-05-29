@@ -1,5 +1,6 @@
 import zarr
 from pathlib import Path
+import os
 _container_extension = '.zarr'
 
 def split_path_at_container(path: str):
@@ -27,8 +28,6 @@ class ZarrWrite(PyScriptObject):
         self.container_path = None
         self.dataset_path = None        
         self.slices = None
-        print("locals #1")
-        print(locals())
 
     def update(self):
         if self.output_dir.is_new and self.output_dir.filenames is not None:
@@ -53,11 +52,24 @@ class ZarrWrite(PyScriptObject):
         output = self.data.source().get_array().T
         ds_name = self.data.source().name.strip('-')
 
-        print('Preparing to save {0} to {1} using slices {2}'.format(output, self.dataset, self.slices))        
-        self.dataset[ds_name] = output
-        self.add_multiscales_metadata(output)
-        print("Added voxel size and offset attributes")
-        print('Save complete')
+        if isinstance(self.dataset, zarr.Group):   
+            print('Saving {0} to {1}'.format(ds_name, self.dataset.name))     
+            self.dataset[ds_name] = output
+            self.add_multiscales_metadata(self.dataset)
+            print("Added voxel size and offset attributes")
+            print('Save complete')
+
+        elif isinstance(self.dataset, zarr.Array):
+            if self.dataset.shape==output.shape:
+                print('Preparing to save {0} to {1}'.format(output, self.dataset))
+                parent_group = self.access_parent(self.dataset)
+                self.dataset=output#[self.slices[::-1]] = output
+                self.add_multiscales_metadata(parent_group)
+                print("Added voxel size and offset attributes")
+                print('Save complete')
+            else:
+                hx_message.error(message="You're trying to store the amira array in the dataset with different dimensions")
+
 
 
     def bbox_to_slices(self):
@@ -70,7 +82,24 @@ class ZarrWrite(PyScriptObject):
         slices = tuple(slice(o, o + s) for o,s in zip(origins, shape))
         return slices
     
-    def add_multiscales_metadata(self, output_arr):
+
+    def separate_store_path(self, store, path):
+   
+        new_store, path_prefix = os.path.split(store)
+        if ".zarr" in path_prefix or ".n5" in path_prefix:
+            return store, path
+        return self.separate_store_path(new_store, os.path.join(path_prefix, path))
+
+    def access_parent(self, node):
+        store_path, node_path = self.separate_store_path(node.store.path, node.path)
+        if node_path == "":
+            raise RuntimeError(
+                f"{node.name} is in the root group of the {node.store.path} store."
+            )
+        else:
+            return zarr.open(store=store_path, path=os.path.split(node_path)[0], mode="a")
+    
+    def add_multiscales_metadata(self, z_group):
         # dataset name
         ds_name = self.data.source().name.strip('-')
         # default order - z, y, x
@@ -78,7 +107,7 @@ class ZarrWrite(PyScriptObject):
         #default units - nm
         unit = 'nanometer'
         # offset values, z, y, x order
-        offset = self.data.source().ports.PhysicalSize.text.split('from')[1].strip().split(', ')
+        offset = self.data.source().ports.PhysicalSize.text.split('from')[1].strip().split(', ')[::-1]
         # voxel size, z, y, x order
         voxel_size = self.data.source().ports.VoxelSize.text.split(" x ")[::-1]        
         z_attrs: dict = {"multiscales": [{}]}
@@ -101,4 +130,7 @@ class ZarrWrite(PyScriptObject):
         z_attrs["multiscales"][0]["name"] = ""
         z_attrs["multiscales"][0]["version"] = "0.4"
 
-        self.dataset.attrs.update(z_attrs)
+       
+        z_group.attrs.update(z_attrs)
+        
+
