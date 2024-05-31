@@ -59,20 +59,18 @@ class ZarrWrite(PyScriptObject):
             self.add_multiscales_metadata(self.dataset, ds_name)
             print("Added voxel size and offset attributes")
             print('Save complete')
-
+            
         elif isinstance(self.dataset, zarr.Array):
             if self.dataset.shape==output.shape:
                 print('Preparing to save {0} to {1}'.format(output, self.dataset))
                 parent_group = self.access_parent(self.dataset)
-                self.dataset=output#[self.slices[::-1]] = output
                 ds_name = self.dataset.name
+                parent_group[ds_name]=output
                 self.add_multiscales_metadata(parent_group, ds_name)
                 print("Added voxel size and offset attributes")
                 print('Save complete')
             else:
                 hx_message.error(message="You're trying to store the amira array in the dataset with different dimensions")
-
-
 
     def bbox_to_slices(self):
         # convert the bounding box of the input data (real units) to a tuple of slices (indices)
