@@ -31,7 +31,12 @@ class ZarrWrite(PyScriptObject):
 
     def update(self):
         if self.output_dir.is_new and self.output_dir.filenames is not None:
-            self.container_path, self.dataset_path = split_path_at_container(self.output_dir.filenames)
+            print(self.output_dir.filenames)
+            if ".zarr" in self.output_dir.filenames:
+                self.container_path, self.dataset_path = split_path_at_container(self.output_dir.filenames)
+            else:
+                self.container_path = os.path.join(self.output_dir.filenames, 'amira_export.zarr')
+                self.dataset_path = 's0'
             self.container = self.access_container(mode='a')
             self.dataset = self.container[self.dataset_path]
         pass
