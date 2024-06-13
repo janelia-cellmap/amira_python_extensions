@@ -31,11 +31,12 @@ class ZarrWrite(PyScriptObject):
 
     def update(self):
         if self.output_dir.is_new and self.output_dir.filenames is not None:
-            print(self.output_dir.filenames)
             if ".zarr" in self.output_dir.filenames:
                 self.container_path, self.dataset_path = split_path_at_container(self.output_dir.filenames)
             else:
-                self.container_path = os.path.join(self.output_dir.filenames, 'amira_export.zarr')
+                dir_path = self.output_dir.filenames
+                container_name = 'amira_export'
+                self.container_path = self.if_name_exists(dir_path, container_name, 0)
                 self.dataset_path = ''
             self.container = self.access_container(mode='a')
             self.dataset = self.container[self.dataset_path]
@@ -93,7 +94,7 @@ class ZarrWrite(PyScriptObject):
         new_store, path_prefix = os.path.split(store)
         if ".zarr" in path_prefix or ".n5" in path_prefix:
             return store, path
-        return self.separate_store_path(new_store, os.path.join(path_prefix, path))
+        return self.separate_store_path(new_store, os.path.join(path_prefix, path).replace("\\","/"))
 
     def access_parent(self, node):
         store_path, node_path = self.separate_store_path(node.store.path, node.path)
@@ -103,6 +104,16 @@ class ZarrWrite(PyScriptObject):
             )
         else:
             return zarr.open(store=store_path, path=os.path.split(node_path)[0], mode="a")
+        
+    def if_name_exists(self, path, zarr_name, copy_num):
+        if copy_num == 0:
+            zarr_path=os.path.join(path, f"{zarr_name}.zarr").replace("\\","/")
+        else:
+            zarr_path= os.path.join(path,f"{zarr_name}_({copy_num}).zarr").replace("\\","/")
+        if not os.path.exists(zarr_path):
+            return zarr_path
+        else:
+            return self.if_name_exists(path, zarr_name, copy_num+1)
     
     def add_multiscales_metadata(self, z_group, ds_name):
         # default order - z, y, x
