@@ -1,0 +1,150 @@
+import zarr
+from pathlib import Path
+import os
+_container_extension = '.zarr'
+
+def split_path_at_container(path: str):
+    # check whether a path contains a valid file path to a container file, and if so which container format it is
+    result = None, None
+    pathobj = Path(path)
+    if pathobj.suffix==_container_extension:
+        result = [path, '']
+    else:
+        for parent in pathobj.parents:
+            if parent.suffix==_container_extension:
+                result = path.split(parent.suffix)
+                result[0] += parent.suffix
+    return result
+
+
+class ZarrWrite(PyScriptObject):
+    def __init__(self):
+        self.data.valid_types = ['HxUniformScalarField3']                
+        self.do_it = HxPortDoIt(self, 'write', 'Save Zarr')
+        self.output_dir = HxPortFilename(self, 'outputDir', 'Output Directory')
+        self.output_dir.mode = HxPortFilename.LOAD_DIRECTORY
+        self.container = None
+        self.dataset = None
+        self.container_path = None
+        self.dataset_path = None        
+        self.slices = None
+
+    def update(self):
+        if self.output_dir.is_new and self.output_dir.filenames is not None:
+            if ".zarr" in self.output_dir.filenames:
+                self.container_path, self.dataset_path = split_path_at_container(self.output_dir.filenames)
+            else:
+                dir_path = self.output_dir.filenames
+                container_name = 'amira_export'
+                self.container_path = self.if_name_exists(dir_path, container_name, 0)
+                self.dataset_path = ''
+            self.container = self.access_container(mode='a')
+            self.dataset = self.container[self.dataset_path]
+        pass
+
+    def access_container(self, mode):       
+        store_path = zarr.NestedDirectoryStore(self.container_path)
+        container = zarr.open(store=store_path, mode=mode)
+        return container
+
+    def compute(self):
+        if not self.do_it.was_hit:
+            return
+        if self.data.source() is None:
+            return    
+        # Slices and array have to be transposed b/c amira uses x,y,z axis ordering but we use z,y,x for 
+        # zarr
+        self.slices = self.bbox_to_slices()
+        output = self.data.source().get_array().T
+        ds_name = self.data.source().name.strip('-')
+
+        if isinstance(self.dataset, zarr.Group):   
+            print('Saving {0} to {1}'.format(ds_name, self.dataset.name))     
+            self.dataset[ds_name] = output
+            ds_name = self.data.source().name.strip('-')
+            self.add_multiscales_metadata(self.dataset, ds_name)
+            print("Added voxel size and offset attributes")
+            print('Save complete')
+            
+        elif isinstance(self.dataset, zarr.Array):
+            if self.dataset.shape==output.shape:
+                print('Preparing to save {0} to {1}'.format(output, self.dataset))
+                parent_group = self.access_parent(self.dataset)
+                ds_name = self.dataset.name
+                parent_group[ds_name]=output
+                self.add_multiscales_metadata(parent_group, ds_name)
+                print("Added voxel size and offset attributes")
+                print('Save complete')
+            else:
+                hx_message.error(message="You're trying to store the amira array in the dataset with different dimensions")
+
+    def bbox_to_slices(self):
+        # convert the bounding box of the input data (real units) to a tuple of slices (indices)
+        shape = self.data.source().get_array().shape
+        bbox_starts, bbox_stops = self.data.source().bounding_box
+        # figure out the sampling resolution by dividing the extent of the data by its shape for each axis
+        rscale = tuple((bsto - bsta) / (s - 1) for bsto, bsta, s in zip(bbox_stops, bbox_starts, shape))
+        origins = tuple(int(bsta / r) for bsta, r in zip(bbox_starts, rscale))
+        slices = tuple(slice(o, o + s) for o,s in zip(origins, shape))
+        return slices
+    
+
+    def separate_store_path(self, store, path):
+   
+        new_store, path_prefix = os.path.split(store)
+        if ".zarr" in path_prefix or ".n5" in path_prefix:
+            return store, path
+        return self.separate_store_path(new_store, os.path.join(path_prefix, path).replace("\\","/"))
+
+    def access_parent(self, node):
+        store_path, node_path = self.separate_store_path(node.store.path, node.path)
+        if node_path == "":
+            raise RuntimeError(
+                f"{node.name} is in the root group of the {node.store.path} store."
+            )
+        else:
+            return zarr.open(store=store_path, path=os.path.split(node_path)[0], mode="a")
+        
+    def if_name_exists(self, path, zarr_name, copy_num):
+        if copy_num == 0:
+            zarr_path=os.path.join(path, f"{zarr_name}.zarr").replace("\\","/")
+        else:
+            zarr_path= os.path.join(path,f"{zarr_name}_({copy_num}).zarr").replace("\\","/")
+        if not os.path.exists(zarr_path):
+            return zarr_path
+        else:
+            return self.if_name_exists(path, zarr_name, copy_num+1)
+    
+    def add_multiscales_metadata(self, z_group, ds_name):
+        # default order - z, y, x
+        axes = ['z', 'y', 'x']
+        #default units - nm
+        unit = 'nanometer'
+        # offset values, z, y, x order
+        offset = self.data.source().ports.PhysicalSize.text.split('from')[1].strip().split(', ')[::-1]
+        # voxel size, z, y, x order
+        voxel_size = self.data.source().ports.VoxelSize.text.split(" x ")[::-1]        
+        z_attrs: dict = {"multiscales": [{}]}
+        z_attrs["multiscales"][0]["axes"] = [
+            {"name": axis, "type": "space", "unit": unit} for axis in axes
+        ]
+        z_attrs["multiscales"][0]["coordinateTransformations"] = [
+            {"scale": [1.0, 1.0, 1.0], "type": "scale"}
+        ]
+        z_attrs["multiscales"][0]["datasets"] = [
+            {
+                "coordinateTransformations": [
+                    {"scale": [float(i) for i in voxel_size], "type": "scale"},
+                    {"translation": [float(i) for i in offset], "type": "translation"},
+                ],
+                "path": ds_name,
+            }
+        ]
+
+        z_attrs["multiscales"][0]["name"] = ""
+        z_attrs["multiscales"][0]["version"] = "0.4"
+
+       
+        z_group.attrs.update(z_attrs)
+        
+

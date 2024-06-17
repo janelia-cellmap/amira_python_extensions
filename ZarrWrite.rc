@@ -1,0 +1,10 @@
+#############################################################
+# .rc for pyscro ZarrWrite
+#############################################################
+
+module -name "ZarrWrite" \
+-language "python" \
+-file "share/python_script_objects/ZarrWrite.pyscro" \
+-primary "HxUniformScalarField3" \
+-package "py_core" \
+-category "{Python Scripts}"
