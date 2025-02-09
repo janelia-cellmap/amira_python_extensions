@@ -19,17 +19,20 @@ def split_path_at_container(path: str):
                 result[0] += parent.suffix
     return result
 
-def access_parent(node: Union[zarr.core.Array, zarr.hierarchy.Group]) -> zarr.hierarchy.Group:
+def access_parent(node: Union[zarr.Array, zarr.Group]) -> zarr.Group:
     """
     Get the parent (zarr.Group) of an input zarr array(ds).
     """
     parent_path = os.path.split(node.path)[0]
-    return zarr.hierarchy.group(store=node.store, path=parent_path)
+    return zarr.open(store=node.store, path=parent_path)
 
-def check_for_multiscale(group: zarr.hierarchy.Group) -> Tuple[dict, zarr.hierarchy.Group]:
+def check_for_multiscale(group: zarr.Group) -> Tuple[dict, zarr.Group]:
     """check if multiscale attribute exists in the input group and for any parent level group
     """
-    multiscales = group.attrs.get("multiscales", None)
+    if group.info._zarr_format == 2:
+        multiscales = group.attrs.get("multiscales", None)
+    else:
+        multiscales = group.attrs['ome'].get("multiscales", None)
 
     if multiscales:
         return (multiscales, group)
@@ -41,7 +44,7 @@ def check_for_multiscale(group: zarr.hierarchy.Group) -> Tuple[dict, zarr.hierar
 
 
 def get_resolution_and_offset(ds: zarr.core.Array,
-                               multiscales_group: Tuple[dict, zarr.hierarchy.Group]) -> Tuple[List[float], List[float], List[str]]:
+                               multiscales_group: Tuple[dict, zarr.Group]) -> Tuple[List[float], List[float], List[str]]:
     """checks multiscale attribute of the .zarr group
         for voxel_size(scale), offset(translation) and units values
     """
@@ -117,7 +120,7 @@ class ZarrRead(PyScriptObject):
             self.container = self.access_container(mode='r')
             self.dataset = self.container[self.dataset_path]
             # validate that user selected a dataset
-            if not isinstance(self.dataset, zarr.core.Array):
+            if not isinstance(self.dataset, zarr.Array):
                 hx_message.error(message='You have not selected a folder that represents a Zarr array.')
                 return
             self.resolution, self.offset, self.units = get_resolution_and_offset(self.dataset, check_for_multiscale(access_parent(self.dataset)))
@@ -142,8 +145,7 @@ class ZarrRead(PyScriptObject):
 
     
     def access_container(self, mode):       
-        store_path = zarr.NestedDirectoryStore(self.container_path)
-        container = zarr.open(store=store_path, mode=mode)
+        container = zarr.open(store=self.container_path, mode=mode)
         return container
 
     def compute(self):
