@@ -43,8 +43,8 @@ class ZarrWrite(PyScriptObject):
         pass
 
     def access_container(self, mode):       
-        store_path = zarr.NestedDirectoryStore(self.container_path)
-        container = zarr.open(store=store_path, mode=mode)
+        #store_path = zarr.NestedDirectoryStore(self.container_path)
+        container = zarr.open(store=self.container_path, mode=mode)
         return container
 
     def compute(self):
@@ -116,6 +116,7 @@ class ZarrWrite(PyScriptObject):
             return self.if_name_exists(path, zarr_name, copy_num+1)
     
     def add_multiscales_metadata(self, z_group, ds_name):
+        
         # default order - z, y, x
         axes = ['z', 'y', 'x']
         #default units - nm
@@ -142,9 +143,13 @@ class ZarrWrite(PyScriptObject):
         ]
 
         z_attrs["multiscales"][0]["name"] = ""
-        z_attrs["multiscales"][0]["version"] = "0.4"
 
-       
-        z_group.attrs.update(z_attrs)
+        if z_group.info._zarr_format == 2:
+            z_attrs["multiscales"][0]["version"] = "0.4"
+            z_group.attrs.update_attributes(z_attrs)
+        else:
+            z_group.attrs.update_attributes({"ome":{"multiscales" : z_attrs["multiscales"], "version": "0.5"}})
+            
+
         
 
