@@ -43,8 +43,8 @@ class ZarrWrite(PyScriptObject):
         pass
 
     def access_container(self, mode):       
-        store_path = zarr.NestedDirectoryStore(self.container_path)
-        container = zarr.open(store=store_path, mode=mode)
+        z_store = zarr.NestedDirectoryStore(self.container_path)
+        container = zarr.open(store=z_store, mode=mode)
         return container
 
     def compute(self):
@@ -60,19 +60,19 @@ class ZarrWrite(PyScriptObject):
 
         if isinstance(self.dataset, zarr.Group):   
             print('Saving {0} to {1}'.format(ds_name, self.dataset.name))     
-            self.dataset[ds_name] = output
+            self.dataset[f'{ds_name}/s0'] = output
             ds_name = self.data.source().name.strip('-')
-            self.add_multiscales_metadata(self.dataset, ds_name)
+            self.add_multiscales_metadata(self.dataset[ds_name], 's0')
             print("Added voxel size and offset attributes")
             print('Save complete')
             
         elif isinstance(self.dataset, zarr.Array):
             if self.dataset.shape==output.shape:
-                print('Preparing to save {0} to {1}'.format(output, self.dataset))
+                print('Preparing to save {0} to {1}'.format( self.data.source().name.strip('-'), self.dataset))
                 parent_group = self.access_parent(self.dataset)
-                ds_name = self.dataset.name
-                parent_group[ds_name]=output
-                self.add_multiscales_metadata(parent_group, ds_name)
+                ds_name = os.path.split(self.dataset.name)[-1]
+                zarr.save_array(store=self.dataset.store, path=self.dataset.path, arr=output)
+                self.add_multiscales_metadata(parent_group,  ds_name)
                 print("Added voxel size and offset attributes")
                 print('Save complete')
             else:
@@ -146,5 +146,3 @@ class ZarrWrite(PyScriptObject):
 
        
         z_group.attrs.update(z_attrs)
-        
-
