@@ -153,6 +153,9 @@ class ZarrRead(PyScriptObject):
 
         result = hx_project.create('HxUniformScalarField3')
         slices_ = tuple(self.slices[d] for d in self._dimensions)[::-1]
+        if any(sl.start==sl.stop for sl in slices_):
+            hx_message.error(message='Start and stop limits are the same along one of the (X, Y, Z) dimensions.')
+            return
         array = da.from_array(self.container[self.dataset_path])[slices_].compute().T
         shape_native_res = ((s-1) * r for s, r in zip(array.shape, self.resolution[::-1]))
         
