@@ -1,7 +1,75 @@
-import zarr
-from pathlib import Path
+import tensorstore as ts
+import json
+import numpy as np
 import os
+from pathlib import Path
 _container_extension = '.zarr'
+
+
+def detect_zarr_version(path: str):
+    p = Path(path)
+    if (p / '.zarray').exists() or (p / '.zgroup').exists():
+        return 'v2'
+    if (p / 'zarr.json').exists():
+        return 'v3'
+    return None
+
+
+def is_zarr_array(path: str) -> bool:
+    p = Path(path)
+    if (p / '.zarray').exists():
+        return True
+    if (p / 'zarr.json').exists():
+        meta = json.loads((p / 'zarr.json').read_text())
+        return meta.get('node_type', 'array') == 'array'
+    return False
+
+
+def open_ts_array(path: str) -> ts.TensorStore:
+    """Open an existing zarr array with tensorstore, auto-detecting v2/v3."""
+    p = Path(path)
+    if (p / '.zarray').exists():
+        driver = 'zarr'
+    elif (p / 'zarr.json').exists():
+        meta = json.loads((p / 'zarr.json').read_text())
+        if meta.get('node_type', 'array') != 'array':
+            raise ValueError(f'{path} is a zarr group, not an array')
+        driver = 'zarr3'
+    else:
+        raise ValueError(f'No zarr array found at {path}')
+    return ts.open({
+        'driver': driver,
+        'kvstore': {'driver': 'file', 'path': str(p)},
+    }).result()
+
+
+def create_ts_array(path: str, data: np.ndarray, zarr_version: str = 'v3') -> ts.TensorStore:
+    """Create a new zarr array and write data into it."""
+    driver = 'zarr3' if zarr_version == 'v3' else 'zarr'
+    Path(path).mkdir(parents=True, exist_ok=True)
+    store = ts.open({
+        'driver': driver,
+        'kvstore': {'driver': 'file', 'path': str(path)},
+        'create': True,
+        'open': True,
+    }, shape=list(data.shape), dtype=data.dtype).result()
+    store[...].write(data).result()
+    return store
+
+
+def ensure_group_metadata(path: str, zarr_version: str = 'v3'):
+    """Create group metadata file if the directory lacks it."""
+    p = Path(path)
+    p.mkdir(parents=True, exist_ok=True)
+    if zarr_version == 'v3':
+        zarr_json = p / 'zarr.json'
+        if not zarr_json.exists():
+            zarr_json.write_text(json.dumps(
+                {'zarr_format': 3, 'node_type': 'group', 'attributes': {}}, indent=2))
+    else:
+        zgroup = p / '.zgroup'
+        if not zgroup.exists():
+            zgroup.write_text(json.dumps({'zarr_format': 2}))
 
 def split_path_at_container(path: str):
     # check whether a path contains a valid file path to a container file, and if so which container format it is
@@ -23,29 +91,17 @@ class ZarrWrite(PyScriptObject):
         self.do_it = HxPortDoIt(self, 'write', 'Save Zarr')
         self.output_dir = HxPortFilename(self, 'outputDir', 'Output Directory')
         self.output_dir.mode = HxPortFilename.LOAD_DIRECTORY
-        self.container = None
-        self.dataset = None
         self.container_path = None
-        self.dataset_path = None        
-        self.slices = None
+        self.dataset_path = None
 
     def update(self):
         if self.output_dir.is_new and self.output_dir.filenames is not None:
-            if ".zarr" in self.output_dir.filenames:
+            if '.zarr' in self.output_dir.filenames:
                 self.container_path, self.dataset_path = split_path_at_container(self.output_dir.filenames)
             else:
                 dir_path = self.output_dir.filenames
-                container_name = 'amira_export'
-                self.container_path = self.if_name_exists(dir_path, container_name, 0)
+                self.container_path = self.if_name_exists(dir_path, 'amira_export', 0)
                 self.dataset_path = ''
-            self.container = self.access_container(mode='a')
-            self.dataset = self.container[self.dataset_path]
-        pass
-
-    def access_container(self, mode):       
-        z_store = zarr.NestedDirectoryStore(self.container_path)
-        container = zarr.open(store=z_store, mode=mode)
-        return container
 
     def compute(self):
         if not self.do_it.was_hit:
@@ -89,22 +145,6 @@ class ZarrWrite(PyScriptObject):
         return slices
     
 
-    def separate_store_path(self, store, path):
-   
-        new_store, path_prefix = os.path.split(store)
-        if ".zarr" in path_prefix or ".n5" in path_prefix:
-            return store, path
-        return self.separate_store_path(new_store, os.path.join(path_prefix, path).replace("\\","/"))
-
-    def access_parent(self, node):
-        store_path, node_path = self.separate_store_path(node.store.path, node.path)
-        if node_path == "":
-            raise RuntimeError(
-                f"{node.name} is in the root group of the {node.store.path} store."
-            )
-        else:
-            return zarr.open(store=store_path, path=os.path.split(node_path)[0], mode="a")
-        
     def if_name_exists(self, path, zarr_name, copy_num):
         if copy_num == 0:
             zarr_path=os.path.join(path, f"{zarr_name}.zarr").replace("\\","/")
