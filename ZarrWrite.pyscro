@@ -154,34 +154,40 @@ class ZarrWrite(PyScriptObject):
         else:
             return self.if_name_exists(path, zarr_name, copy_num+1)
     
-    def add_multiscales_metadata(self, z_group, ds_name):
-        # default order - z, y, x
+    def add_multiscales_metadata(self, group_dir: str, ds_name: str, zarr_version: str):
         axes = ['z', 'y', 'x']
-        #default units - nm
         unit = 'nanometer'
-        # offset values, z, y, x order
         offset = self.data.source().ports.PhysicalSize.text.split('from')[1].strip().split(', ')[::-1]
-        # voxel size, z, y, x order
-        voxel_size = self.data.source().ports.VoxelSize.text.split(" x ")[::-1]        
-        z_attrs: dict = {"multiscales": [{}]}
-        z_attrs["multiscales"][0]["axes"] = [
-            {"name": axis, "type": "space", "unit": unit} for axis in axes
+        voxel_size = self.data.source().ports.VoxelSize.text.split(' x ')[::-1]
+
+        version_str = '0.5' if zarr_version == 'v3' else '0.4'
+        attrs: dict = {'multiscales': [{}]}
+        attrs['multiscales'][0]['axes'] = [
+            {'name': axis, 'type': 'space', 'unit': unit} for axis in axes
         ]
-        z_attrs["multiscales"][0]["coordinateTransformations"] = [
-            {"scale": [1.0, 1.0, 1.0], "type": "scale"}
+        attrs['multiscales'][0]['coordinateTransformations'] = [
+            {'scale': [1.0, 1.0, 1.0], 'type': 'scale'}
         ]
-        z_attrs["multiscales"][0]["datasets"] = [
+        attrs['multiscales'][0]['datasets'] = [
             {
-                "coordinateTransformations": [
-                    {"scale": [float(i) for i in voxel_size], "type": "scale"},
-                    {"translation": [float(i) for i in offset], "type": "translation"},
+                'coordinateTransformations': [
+                    {'scale': [float(i) for i in voxel_size], 'type': 'scale'},
+                    {'translation': [float(i) for i in offset], 'type': 'translation'},
                 ],
-                "path": ds_name,
+                'path': ds_name,
             }
         ]
+        attrs['multiscales'][0]['name'] = ''
+        attrs['multiscales'][0]['version'] = version_str
 
-        z_attrs["multiscales"][0]["name"] = ""
-        z_attrs["multiscales"][0]["version"] = "0.4"
-
-       
-        z_group.attrs.update(z_attrs)
+        p = Path(group_dir)
+        if zarr_version == 'v3':
+            zarr_json_path = p / 'zarr.json'
+            if zarr_json_path.exists():
+                meta = json.loads(zarr_json_path.read_text())
+            else:
+                meta = {'zarr_format': 3, 'node_type': 'group'}
+            meta['attributes'] = attrs
+            zarr_json_path.write_text(json.dumps(meta, indent=2))
+        else:
+            (p / '.zattrs').write_text(json.dumps(attrs, indent=2))
