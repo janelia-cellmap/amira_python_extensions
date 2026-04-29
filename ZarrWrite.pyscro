@@ -148,7 +148,14 @@ class ZarrWrite(PyScriptObject):
             print('Saving {0} to {1}'.format(ds_name, array_dir))
             ensure_group_metadata(node_path, zarr_version)
             ensure_group_metadata(group_dir, zarr_version)
-            create_ts_array(array_dir, output, zarr_version)
+            if is_zarr_array(array_dir):
+                existing = open_ts_array(array_dir)
+                if tuple(existing.shape) != output.shape:
+                    hx_message.error(message='Array dimensions do not match the target dataset.')
+                    return
+                existing[...].write(output).result()
+            else:
+                create_ts_array(array_dir, output, zarr_version)
             self.add_multiscales_metadata(group_dir, 's0', zarr_version)
 
     def selected_zarr_version(self) -> str:
