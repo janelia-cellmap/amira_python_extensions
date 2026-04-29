@@ -1,7 +1,87 @@
-import zarr
-from pathlib import Path
+import tensorstore as ts
+import json
+import numpy as np
 import os
+from pathlib import Path
 _container_extension = '.zarr'
+
+
+
+def is_zarr_array(path: str) -> bool:
+    p = Path(path)
+    if (p / '.zarray').exists():
+        return True
+    if (p / 'zarr.json').exists():
+        meta = json.loads((p / 'zarr.json').read_text())
+        return meta.get('node_type', 'array') == 'array'
+    return False
+
+
+def open_ts_array(path: str) -> ts.TensorStore:
+    """Open an existing zarr array with tensorstore, auto-detecting v2/v3."""
+    p = Path(path)
+    if (p / '.zarray').exists():
+        driver = 'zarr'
+    elif (p / 'zarr.json').exists():
+        meta = json.loads((p / 'zarr.json').read_text())
+        if meta.get('node_type', 'array') != 'array':
+            raise ValueError(f'{path} is a zarr group, not an array')
+        driver = 'zarr3'
+    else:
+        raise ValueError(f'No zarr array found at {path}')
+    return ts.open({
+        'driver': driver,
+        'kvstore': {'driver': 'file', 'path': str(p)},
+    }).result()
+
+
+def create_ts_array(path: str, data: np.ndarray, zarr_version: str = 'v3') -> ts.TensorStore:
+    """Create a new zarr array and write data into it."""
+    Path(path).mkdir(parents=True, exist_ok=True)
+    if zarr_version == 'v3':
+        spec = {
+            'driver': 'zarr3',
+            'kvstore': {'driver': 'file', 'path': str(path)},
+            'create': True,
+            'open': True,
+            'metadata': {
+                'chunk_grid': {'name': 'regular', 'configuration': {'chunk_shape': [128, 128, 128]}},
+                'codecs': [
+                    {'name': 'bytes'},
+                    {'name': 'zstd', 'configuration': {'level': 3}},
+                ],
+            },
+        }
+    else:
+        spec = {
+            'driver': 'zarr',
+            'kvstore': {'driver': 'file', 'path': str(path)},
+            'create': True,
+            'open': True,
+            'metadata': {
+                'chunks': [128, 128, 128],
+                'compressor': {'id': 'zstd', 'level': 3},
+                'dimension_separator': '/',
+            },
+        }
+    store = ts.open(spec, shape=list(data.shape), dtype=data.dtype).result()
+    store[...].write(data).result()
+    return store
+
+
+def ensure_group_metadata(path: str, zarr_version: str = 'v3'):
+    """Create group metadata file if the directory lacks it."""
+    p = Path(path)
+    p.mkdir(parents=True, exist_ok=True)
+    if zarr_version == 'v3':
+        zarr_json = p / 'zarr.json'
+        if not zarr_json.exists():
+            zarr_json.write_text(json.dumps(
+                {'zarr_format': 3, 'node_type': 'group', 'attributes': {}}, indent=2))
+    else:
+        zgroup = p / '.zgroup'
+        if not zgroup.exists():
+            zgroup.write_text(json.dumps({'zarr_format': 2}))
 
 def split_path_at_container(path: str):
     # check whether a path contains a valid file path to a container file, and if so which container format it is
@@ -19,64 +99,60 @@ def split_path_at_container(path: str):
 
 class ZarrWrite(PyScriptObject):
     def __init__(self):
-        self.data.valid_types = ['HxUniformScalarField3']                
+        self.data.valid_types = ['HxUniformScalarField3']
         self.do_it = HxPortDoIt(self, 'write', 'Save Zarr')
         self.output_dir = HxPortFilename(self, 'outputDir', 'Output Directory')
         self.output_dir.mode = HxPortFilename.LOAD_DIRECTORY
-        self.container = None
-        self.dataset = None
+        self.zarr_format = HxPortMultiMenu(self)
+        self.zarr_format.menus = [
+            HxPortButtonMenu.Menu(options=['Zarr v2', 'Zarr v3']),
+        ]
+        self.zarr_format.name = 'zarrFormat'
+        self.zarr_format.label = 'Zarr Format'
+        self.zarr_format.position = 1
         self.container_path = None
-        self.dataset_path = None        
-        self.slices = None
+        self.dataset_path = None
 
     def update(self):
         if self.output_dir.is_new and self.output_dir.filenames is not None:
-            if ".zarr" in self.output_dir.filenames:
+            if '.zarr' in self.output_dir.filenames:
                 self.container_path, self.dataset_path = split_path_at_container(self.output_dir.filenames)
             else:
                 dir_path = self.output_dir.filenames
-                container_name = 'amira_export'
-                self.container_path = self.if_name_exists(dir_path, container_name, 0)
+                self.container_path = self.if_name_exists(dir_path, 'amira_export', 0)
                 self.dataset_path = ''
-            self.container = self.access_container(mode='a')
-            self.dataset = self.container[self.dataset_path]
-        pass
-
-    def access_container(self, mode):       
-        z_store = zarr.NestedDirectoryStore(self.container_path)
-        container = zarr.open(store=z_store, mode=mode)
-        return container
 
     def compute(self):
         if not self.do_it.was_hit:
             return
         if self.data.source() is None:
-            return    
-        # Slices and array have to be transposed b/c amira uses x,y,z axis ordering but we use z,y,x for 
-        # zarr
-        self.slices = self.bbox_to_slices()
+            return
+
         output = self.data.source().get_array().T
         ds_name = self.data.source().name.strip('-')
+        node_path = self.container_path + self.dataset_path
 
-        if isinstance(self.dataset, zarr.Group):   
-            print('Saving {0} to {1}'.format(ds_name, self.dataset.name))     
-            self.dataset[f'{ds_name}/s0'] = output
-            ds_name = self.data.source().name.strip('-')
-            self.add_multiscales_metadata(self.dataset[ds_name], 's0')
-            print("Added voxel size and offset attributes")
-            print('Save complete')
-            
-        elif isinstance(self.dataset, zarr.Array):
-            if self.dataset.shape==output.shape:
-                print('Preparing to save {0} to {1}'.format( self.data.source().name.strip('-'), self.dataset))
-                parent_group = self.access_parent(self.dataset)
-                ds_name = os.path.split(self.dataset.name)[-1]
-                zarr.save_array(store=self.dataset.store, path=self.dataset.path, arr=output)
-                self.add_multiscales_metadata(parent_group,  ds_name)
-                print("Added voxel size and offset attributes")
-                print('Save complete')
-            else:
-                hx_message.error(message="You're trying to store the amira array in the dataset with different dimensions")
+        zarr_version = self.selected_zarr_version()
+        if is_zarr_array(node_path):
+            existing = open_ts_array(node_path)
+            if tuple(existing.shape) != output.shape:
+                hx_message.error(message='Array dimensions do not match the target dataset.')
+                return
+            print('Saving {0} to {1}'.format(ds_name, node_path))
+            existing[...].write(output).result()
+            parent_dir = self.container_path if self.dataset_path == '' else str(Path(node_path).parent)
+            self.add_multiscales_metadata(parent_dir, os.path.basename(node_path), zarr_version)
+        else:
+            array_dir = os.path.join(node_path, ds_name, 's0')
+            group_dir = os.path.join(node_path, ds_name)
+            print('Saving {0} to {1}'.format(ds_name, array_dir))
+            ensure_group_metadata(node_path, zarr_version)
+            ensure_group_metadata(group_dir, zarr_version)
+            create_ts_array(array_dir, output, zarr_version)
+            self.add_multiscales_metadata(group_dir, 's0', zarr_version)
+
+    def selected_zarr_version(self) -> str:
+        return 'v2' if self.zarr_format.menus[0].selected == 0 else 'v3'
 
     def bbox_to_slices(self):
         # convert the bounding box of the input data (real units) to a tuple of slices (indices)
@@ -89,22 +165,6 @@ class ZarrWrite(PyScriptObject):
         return slices
     
 
-    def separate_store_path(self, store, path):
-   
-        new_store, path_prefix = os.path.split(store)
-        if ".zarr" in path_prefix or ".n5" in path_prefix:
-            return store, path
-        return self.separate_store_path(new_store, os.path.join(path_prefix, path).replace("\\","/"))
-
-    def access_parent(self, node):
-        store_path, node_path = self.separate_store_path(node.store.path, node.path)
-        if node_path == "":
-            raise RuntimeError(
-                f"{node.name} is in the root group of the {node.store.path} store."
-            )
-        else:
-            return zarr.open(store=store_path, path=os.path.split(node_path)[0], mode="a")
-        
     def if_name_exists(self, path, zarr_name, copy_num):
         if copy_num == 0:
             zarr_path=os.path.join(path, f"{zarr_name}.zarr").replace("\\","/")
@@ -115,34 +175,40 @@ class ZarrWrite(PyScriptObject):
         else:
             return self.if_name_exists(path, zarr_name, copy_num+1)
     
-    def add_multiscales_metadata(self, z_group, ds_name):
-        # default order - z, y, x
+    def add_multiscales_metadata(self, group_dir: str, ds_name: str, zarr_version: str):
         axes = ['z', 'y', 'x']
-        #default units - nm
         unit = 'nanometer'
-        # offset values, z, y, x order
         offset = self.data.source().ports.PhysicalSize.text.split('from')[1].strip().split(', ')[::-1]
-        # voxel size, z, y, x order
-        voxel_size = self.data.source().ports.VoxelSize.text.split(" x ")[::-1]        
-        z_attrs: dict = {"multiscales": [{}]}
-        z_attrs["multiscales"][0]["axes"] = [
-            {"name": axis, "type": "space", "unit": unit} for axis in axes
+        voxel_size = self.data.source().ports.VoxelSize.text.split(' x ')[::-1]
+
+        version_str = '0.5' if zarr_version == 'v3' else '0.4'
+        attrs: dict = {'multiscales': [{}]}
+        attrs['multiscales'][0]['axes'] = [
+            {'name': axis, 'type': 'space', 'unit': unit} for axis in axes
         ]
-        z_attrs["multiscales"][0]["coordinateTransformations"] = [
-            {"scale": [1.0, 1.0, 1.0], "type": "scale"}
+        attrs['multiscales'][0]['coordinateTransformations'] = [
+            {'scale': [1.0, 1.0, 1.0], 'type': 'scale'}
         ]
-        z_attrs["multiscales"][0]["datasets"] = [
+        attrs['multiscales'][0]['datasets'] = [
             {
-                "coordinateTransformations": [
-                    {"scale": [float(i) for i in voxel_size], "type": "scale"},
-                    {"translation": [float(i) for i in offset], "type": "translation"},
+                'coordinateTransformations': [
+                    {'scale': [float(i) for i in voxel_size], 'type': 'scale'},
+                    {'translation': [float(i) for i in offset], 'type': 'translation'},
                 ],
-                "path": ds_name,
+                'path': ds_name,
             }
         ]
+        attrs['multiscales'][0]['name'] = ''
+        attrs['multiscales'][0]['version'] = version_str
 
-        z_attrs["multiscales"][0]["name"] = ""
-        z_attrs["multiscales"][0]["version"] = "0.4"
-
-       
-        z_group.attrs.update(z_attrs)
+        p = Path(group_dir)
+        if zarr_version == 'v3':
+            zarr_json_path = p / 'zarr.json'
+            if zarr_json_path.exists():
+                meta = json.loads(zarr_json_path.read_text())
+            else:
+                meta = {'zarr_format': 3, 'node_type': 'group'}
+            meta['attributes'] = attrs
+            zarr_json_path.write_text(json.dumps(meta, indent=2))
+        else:
+            (p / '.zattrs').write_text(json.dumps(attrs, indent=2))
