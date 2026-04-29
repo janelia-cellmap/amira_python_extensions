@@ -61,37 +61,36 @@ def check_for_multiscale(group_path: str, container_root: str) -> Tuple[Optional
     return check_for_multiscale(str(Path(group_path).parent), container_root)
 
 
-def get_resolution_and_offset(ds: zarr.core.Array,
-                               multiscales_group: Tuple[dict, zarr.hierarchy.Group]) -> Tuple[List[float], List[float], List[str]]:
-    """checks multiscale attribute of the .zarr group
-        for voxel_size(scale), offset(translation) and units values
-    """
+def get_resolution_and_offset(array_dir: str, ndim: int,
+                               multiscales_result: Tuple) -> Tuple[List[float], List[float], List[str]]:
+    voxel_size = [1.0] * ndim
+    offset = [0.0] * ndim
+    units = ['nanometer'] * ndim
+    multiscales, ms_dir = multiscales_result
 
-    voxel_size = [1] * ds.ndim
-    offset = [0] * ds.ndim
-    units = ["nanometer"] * ds.ndim
-    multiscales = multiscales_group[0]
+    if multiscales is None:
+        print('Multiscales not found. Using defaults: Resolution={0} nm, Offset={1} nm'.format(voxel_size, offset))
+        return voxel_size, offset, units
 
-    if multiscales is not None:
-        print("Found multiscales attributes")
-        scale = os.path.split(ds.path)[1]
-        
-        if multiscales[0]["axes"]:
-            units = [item["unit"] for item in multiscales[0]["axes"]]
-        else: 
-            print("Units are not defined in multiscales. Using default: Units = {0}".format(units))
-            
-        # get s0 level voxel_size and offset
-        for level in multiscales[0]["datasets"]:
-            if level["path"].lstrip("/") == scale:
-                for attr in level["coordinateTransformations"]:
-                    if attr["type"] == "scale":
-                        voxel_size = attr["scale"]
-                    elif attr["type"] == "translation":
-                        offset = attr["translation"]
-                return voxel_size, offset, units
+    print('Found multiscales attributes')
+    try:
+        rel_path = str(Path(array_dir).relative_to(ms_dir))
+    except ValueError:
+        rel_path = os.path.basename(array_dir)
+
+    if multiscales[0].get('axes'):
+        units = [item['unit'] for item in multiscales[0]['axes']]
     else:
-        print('Multiscales attributes not found. Using default: Resolution = {0} nm, Offset = {1} nm'.format(voxel_size, offset))
+        print('Units not defined in multiscales. Using default: {0}'.format(units))
+
+    for level in multiscales[0]['datasets']:
+        if level['path'].lstrip('/') == rel_path.lstrip('/'):
+            for attr in level['coordinateTransformations']:
+                if attr['type'] == 'scale':
+                    voxel_size = attr['scale']
+                elif attr['type'] == 'translation':
+                    offset = attr['translation']
+            return voxel_size, offset, units
 
     return voxel_size, offset, units
 
@@ -141,9 +140,10 @@ class ZarrRead(PyScriptObject):
             if not isinstance(self.dataset, zarr.core.Array):
                 hx_message.error(message='You have not selected a folder that represents a Zarr array.')
                 return
+            array_dir = self.container_path + self.dataset_path
             parent_dir = os.path.join(self.container_path, os.path.split(self.dataset.path)[0].lstrip('/')) if self.dataset.path else self.container_path
             multiscales_result = check_for_multiscale(parent_dir, self.container_path)
-            self.resolution, self.offset, self.units = get_resolution_and_offset(self.dataset, multiscales_result)
+            self.resolution, self.offset, self.units = get_resolution_and_offset(array_dir, len(self.dataset.shape), multiscales_result)
             self.update_info_box()
             for ind, dim in enumerate(self._dimensions):
                 for tb in self.slice_textboxes[dim].texts:
