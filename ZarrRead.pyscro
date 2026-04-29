@@ -173,7 +173,6 @@ class ZarrRead(PyScriptObject):
                 self.resolution = self.resolution[-3:]
                 self.offset = self.offset[-3:]
                 self.units = self.units[-3:]
-                self.channel.texts[0].clamp_range = (0, self.dataset.shape[0] - 1)
             else:
                 self.channel.texts[0].clamp_range = (0, 0)
             self.update_info_box()
