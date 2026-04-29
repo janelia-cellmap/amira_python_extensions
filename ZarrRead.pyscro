@@ -191,7 +191,7 @@ class ZarrRead(PyScriptObject):
             elif self.ndim == 4:
                 max_ch = self.dataset.shape[0] - 1
                 if ch < 0 or ch > max_ch:
-                    hx_message.error(message='Channel index out of range. Choose within 0–{0}.'.format(max_ch))
+                    hx_message.error(message='Channel index out of range. Choose within 0-{0}.'.format(max_ch))
 
         # if any of the textboxes have changed, then update the corresponding slices
         if any(s.is_new for s in self.slice_textboxes.values()):
@@ -213,7 +213,6 @@ class ZarrRead(PyScriptObject):
             hx_message.error(message='No array selected. Please choose a Zarr array first.')
             return
 
-        result = hx_project.create('HxUniformScalarField3')
         ch = self.channel.texts[0].value
         if self.ndim == 3 and ch != 0:
             hx_message.error(message='Channel index must be 0 for a 3D array.')
@@ -227,6 +226,7 @@ class ZarrRead(PyScriptObject):
         if any(sl.start == sl.stop for sl in spatial_slices):
             hx_message.error(message='Start and stop limits are the same along one of the (X, Y, Z) dimensions.')
             return
+        result = hx_project.create('HxUniformScalarField3')
         ts_slices = (ch,) + spatial_slices if self.ndim == 4 else spatial_slices
         array = self.dataset[ts_slices].read().result().T
         shape_native_res = ((s - 1) * r for s, r in zip(array.shape, self.resolution[::-1]))
