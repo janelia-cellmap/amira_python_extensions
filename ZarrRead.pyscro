@@ -122,27 +122,30 @@ class ZarrRead(PyScriptObject):
         self.container_path = None
         self.dataset_path = None
         self.array_dir = None
+        self.ndim = None
         self.resolution = None
         self.offset = None
         self.units = None
 
+        self.channel = HxPortIntTextN(self, 'channel', 'Channel')
+        self.channel.texts = [HxPortIntTextN.IntText(label='Index', value=0)]
 
         self._dimensions = ('x', 'y', 'z')
         self.slice_textboxes = dict()
-        self.update_info_box()        
-        
+        self.update_info_box()
+
         for dim in self._dimensions:
             dim_disp = dim.upper()
-            self.slice_textboxes[dim] = HxPortIntTextN(self, 
-                                                       label='{0} limits'.format(dim_disp), 
+            self.slice_textboxes[dim] = HxPortIntTextN(self,
+                                                       label='{0} limits'.format(dim_disp),
                                                        name='{0}_lims'.format(dim))
-                    
-            self.slice_textboxes[dim].texts = [HxPortIntTextN.IntText(label="Start", 
+
+            self.slice_textboxes[dim].texts = [HxPortIntTextN.IntText(label="Start",
                                                                       value=0),
-                                               HxPortIntTextN.IntText(label="Stop", 
+                                               HxPortIntTextN.IntText(label="Stop",
                                                                       value=0)]
-                
-        self.slices = {d: slice(0, 1) for d in self._dimensions} 
+
+        self.slices = {d: slice(0, 1) for d in self._dimensions}
     
 
     def update(self):
@@ -157,15 +160,25 @@ class ZarrRead(PyScriptObject):
                 return
             self.dataset = open_ts_array(self.array_dir)
             ndim = len(self.dataset.shape)
+            if ndim not in (3, 4):
+                hx_message.error(message='Only 3D and 4D arrays are supported (got {0}D).'.format(ndim))
+                return
+            self.ndim = ndim
             parent_dir = self.container_path if self.dataset_path == '' else str(Path(self.array_dir).parent)
             multiscales_result = check_for_multiscale(parent_dir, self.container_path)
             self.resolution, self.offset, self.units = get_resolution_and_offset(self.array_dir, ndim, multiscales_result)
+            if ndim == 4:
+                # drop the leading channel axis from spatial metadata
+                self.resolution = self.resolution[-3:]
+                self.offset = self.offset[-3:]
+                self.units = self.units[-3:]
+                self.channel.texts[0].clamp_range = (0, self.dataset.shape[0] - 1)
+            else:
+                self.channel.texts[0].clamp_range = (0, 0)
             self.update_info_box()
             for ind, dim in enumerate(self._dimensions):
                 for tb in self.slice_textboxes[dim].texts:
                     tb.clamp_range = (0, self.dataset.shape[::-1][ind])
-
-            assert ndim == 3
         
         # if any of the textboxes have changed, then update the corresponding slices
         if any(s.is_new for s in self.slice_textboxes.values()):
@@ -186,24 +199,25 @@ class ZarrRead(PyScriptObject):
             return
 
         result = hx_project.create('HxUniformScalarField3')
-        slices_ = tuple(self.slices[d] for d in self._dimensions)[::-1]
-        if any(sl.start==sl.stop for sl in slices_):
+        ch = self.channel.texts[0].value
+        if self.ndim == 3 and ch != 0:
+            hx_message.error(message='Channel index must be 0 for a 3D array.')
+            return
+        spatial_slices = tuple(self.slices[d] for d in self._dimensions)[::-1]
+        if any(sl.start == sl.stop for sl in spatial_slices):
             hx_message.error(message='Start and stop limits are the same along one of the (X, Y, Z) dimensions.')
             return
-        array = self.dataset[slices_].read().result().T
-        shape_native_res = ((s-1) * r for s, r in zip(array.shape, self.resolution[::-1]))
-        
-        # amira doesn't like numpy uint64 or uint32
+        ts_slices = (ch,) + spatial_slices if self.ndim == 4 else spatial_slices
+        array = self.dataset[ts_slices].read().result().T
+        shape_native_res = ((s - 1) * r for s, r in zip(array.shape, self.resolution[::-1]))
+
         if array.dtype in (np.dtype('uint64'), np.dtype('uint32')):
             array = array.astype('uint16')
         if array.dtype == np.dtype('int64'):
             array = array.astype('int32')
-        
-        # for a 3D array with dimensions numbered [0,1,2], amira assigns named dimensions ['x','y','z'] 
-        # so everything has to be flipped relative to the pythonic indexing scheme
-        # in amira, the bounding box defines the pixel size and position in space of the data. So we set the bounding box and origin in nanometers.
-        bbox_starts = tuple((r * s.start) + o for r, s, o in zip(self.resolution, slices_, self.offset))[::-1]
-        bbox_stops = tuple(o + s for o, s in zip(bbox_starts, shape_native_res)) 
+
+        bbox_starts = tuple((r * s.start) + o for r, s, o in zip(self.resolution, spatial_slices, self.offset))[::-1]
+        bbox_stops = tuple(o + s for o, s in zip(bbox_starts, shape_native_res))
 
         result.bounding_box = bbox_starts, bbox_stops
         result.set_array(array)
