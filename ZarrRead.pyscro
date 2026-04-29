@@ -1,7 +1,6 @@
-import zarr
+import tensorstore as ts
 from pathlib import Path
 import numpy as np
-import dask.array as da
 import os
 import json
 from typing import List, Tuple, Optional
@@ -48,6 +47,24 @@ def read_attrs(path: str) -> dict:
         meta = json.loads((p / 'zarr.json').read_text())
         return meta.get('attributes', {})
     return {}
+
+
+def open_ts_array(path: str) -> ts.TensorStore:
+    """Open an existing zarr array with tensorstore, auto-detecting v2/v3."""
+    p = Path(path)
+    if (p / '.zarray').exists():
+        driver = 'zarr'
+    elif (p / 'zarr.json').exists():
+        meta = json.loads((p / 'zarr.json').read_text())
+        if meta.get('node_type', 'array') != 'array':
+            raise ValueError(f'{path} is a zarr group, not an array')
+        driver = 'zarr3'
+    else:
+        raise ValueError(f'No zarr array found at {path}')
+    return ts.open({
+        'driver': driver,
+        'kvstore': {'driver': 'file', 'path': str(p)},
+    }).result()
 
 
 def check_for_multiscale(group_path: str, container_root: str) -> Tuple[Optional[list], str]:
@@ -101,10 +118,10 @@ class ZarrRead(PyScriptObject):
         self.input_dir = HxPortFilename(self, 'inputDir', 'Input Directory')
         self.input_dir.mode = HxPortFilename.LOAD_DIRECTORY
         self.info = HxPortInfo(self, 'array_info', 'Array info')
-        self.container = None
         self.dataset = None
         self.container_path = None
         self.dataset_path = None
+        self.array_dir = None
         self.resolution = None
         self.offset = None
         self.units = None
@@ -134,22 +151,21 @@ class ZarrRead(PyScriptObject):
             if self.container_path is None:
                 hx_message.error(message='You have not selected a folder that represents a Zarr array.')
                 return
-            self.container = self.access_container(mode='r')
-            self.dataset = self.container[self.dataset_path]
-            # validate that user selected a dataset
-            if not isinstance(self.dataset, zarr.core.Array):
+            self.array_dir = self.container_path + self.dataset_path
+            if not is_zarr_array(self.array_dir):
                 hx_message.error(message='You have not selected a folder that represents a Zarr array.')
                 return
-            array_dir = self.container_path + self.dataset_path
-            parent_dir = os.path.join(self.container_path, os.path.split(self.dataset.path)[0].lstrip('/')) if self.dataset.path else self.container_path
+            self.dataset = open_ts_array(self.array_dir)
+            ndim = len(self.dataset.shape)
+            parent_dir = self.container_path if self.dataset_path == '' else str(Path(self.array_dir).parent)
             multiscales_result = check_for_multiscale(parent_dir, self.container_path)
-            self.resolution, self.offset, self.units = get_resolution_and_offset(array_dir, len(self.dataset.shape), multiscales_result)
+            self.resolution, self.offset, self.units = get_resolution_and_offset(self.array_dir, ndim, multiscales_result)
             self.update_info_box()
             for ind, dim in enumerate(self._dimensions):
                 for tb in self.slice_textboxes[dim].texts:
                     tb.clamp_range = (0, self.dataset.shape[::-1][ind])
 
-            assert len(self.dataset.shape) == 3
+            assert ndim == 3
         
         # if any of the textboxes have changed, then update the corresponding slices
         if any(s.is_new for s in self.slice_textboxes.values()):
@@ -158,16 +174,11 @@ class ZarrRead(PyScriptObject):
         pass
 
     def update_info_box(self):
-        if isinstance(self.dataset, zarr.core.Array):
-            self.info.text = '{0} array with shape {1}'.format(self.dataset.dtype, self.dataset.shape[::-1])        
+        if self.dataset is not None:
+            self.info.text = '{0} array with shape {1}'.format(
+                self.dataset.dtype.numpy_dtype, tuple(self.dataset.shape)[::-1])
         else:
             self.info.text = 'No array selected'
-
-    
-    def access_container(self, mode):       
-        store_path = zarr.NestedDirectoryStore(self.container_path)
-        container = zarr.open(store=store_path, mode=mode)
-        return container
 
     def compute(self):
         
