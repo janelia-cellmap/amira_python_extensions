@@ -229,7 +229,7 @@ class ZarrRead(PyScriptObject):
         result = hx_project.create('HxUniformScalarField3')
         ts_slices = (ch,) + spatial_slices if self.ndim == 4 else spatial_slices
         array = self.dataset[ts_slices].read().result().T
-        shape_native_res = (s * r for s, r in zip(array.shape, self.resolution[::-1]))
+        shape_native_res = ((s - 1) * r for s, r in zip(array.shape, self.resolution[::-1]))
 
         if array.dtype in (np.dtype('uint64'), np.dtype('uint32')):
             array = array.astype('uint16')
