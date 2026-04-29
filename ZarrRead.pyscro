@@ -178,8 +178,12 @@ class ZarrRead(PyScriptObject):
                 self.channel.texts[0].clamp_range = (0, 0)
             self.update_info_box()
             for ind, dim in enumerate(self._dimensions):
+                size = self.dataset.shape[::-1][ind]
                 for tb in self.slice_textboxes[dim].texts:
-                    tb.clamp_range = (0, self.dataset.shape[::-1][ind])
+                    tb.clamp_range = (0, size)
+                self.slice_textboxes[dim].texts[0].value = 0
+                self.slice_textboxes[dim].texts[1].value = size
+                self.slices[dim] = slice(0, size)
         
         # if any of the textboxes have changed, then update the corresponding slices
         if any(s.is_new for s in self.slice_textboxes.values()):
