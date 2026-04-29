@@ -96,7 +96,8 @@ def get_resolution_and_offset(array_dir: str, ndim: int,
         rel_path = os.path.basename(array_dir)
 
     if multiscales[0].get('axes'):
-        units = [item['unit'] for item in multiscales[0]['axes']]
+        units = [item.get('unit', '' if item.get('type') == 'channel' else 'nanometer')
+                 for item in multiscales[0]['axes']]
     else:
         print('Units not defined in multiscales. Using default: {0}'.format(units))
 
