@@ -190,7 +190,7 @@ class ZarrRead(PyScriptObject):
         if any(sl.start==sl.stop for sl in slices_):
             hx_message.error(message='Start and stop limits are the same along one of the (X, Y, Z) dimensions.')
             return
-        array = da.from_array(self.container[self.dataset_path])[slices_].compute().T
+        array = self.dataset[slices_].read().result().T
         shape_native_res = ((s-1) * r for s, r in zip(array.shape, self.resolution[::-1]))
         
         # amira doesn't like numpy uint64 or uint32
