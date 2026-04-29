@@ -131,7 +131,7 @@ class ZarrRead(PyScriptObject):
         self.channel = HxPortIntTextN(self, 'channel', 'Channel')
         self.channel.texts = [HxPortIntTextN.IntText(label='Index', value=0)]
 
-        self._dimensions = ('x', 'y', 'z')
+        self._dimensions = ('z', 'y', 'x')
         self.slice_textboxes = dict()
         self.update_info_box()
 
