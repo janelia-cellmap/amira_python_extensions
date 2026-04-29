@@ -37,14 +37,34 @@ def open_ts_array(path: str) -> ts.TensorStore:
 
 def create_ts_array(path: str, data: np.ndarray, zarr_version: str = 'v3') -> ts.TensorStore:
     """Create a new zarr array and write data into it."""
-    driver = 'zarr3' if zarr_version == 'v3' else 'zarr'
     Path(path).mkdir(parents=True, exist_ok=True)
-    store = ts.open({
-        'driver': driver,
-        'kvstore': {'driver': 'file', 'path': str(path)},
-        'create': True,
-        'open': True,
-    }, shape=list(data.shape), dtype=data.dtype).result()
+    if zarr_version == 'v3':
+        spec = {
+            'driver': 'zarr3',
+            'kvstore': {'driver': 'file', 'path': str(path)},
+            'create': True,
+            'open': True,
+            'metadata': {
+                'chunk_grid': {'name': 'regular', 'configuration': {'chunk_shape': [128, 128, 128]}},
+                'codecs': [
+                    {'name': 'bytes'},
+                    {'name': 'zstd', 'configuration': {'level': 3}},
+                ],
+            },
+        }
+    else:
+        spec = {
+            'driver': 'zarr',
+            'kvstore': {'driver': 'file', 'path': str(path)},
+            'create': True,
+            'open': True,
+            'metadata': {
+                'chunks': [128, 128, 128],
+                'compressor': {'id': 'zstd', 'level': 3},
+                'dimension_separator': '/',
+            },
+        }
+    store = ts.open(spec, shape=list(data.shape), dtype=data.dtype).result()
     store[...].write(data).result()
     return store
 
