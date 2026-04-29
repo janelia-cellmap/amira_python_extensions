@@ -87,7 +87,7 @@ class ZarrWrite(PyScriptObject):
         self.zarr_format.name = 'zarrFormat'
         self.zarr_format.label = 'Zarr Format'
         _fmt_menu = HxPortButtonMenu.Menu(options=['Zarr v2', 'Zarr v3'])
-        _fmt_menu.selected_index = 1
+        _fmt_menu.selected = 1
         self.zarr_format.menus = [_fmt_menu]
         self.container_path = None
         self.dataset_path = None
@@ -131,7 +131,7 @@ class ZarrWrite(PyScriptObject):
             self.add_multiscales_metadata(group_dir, 's0', zarr_version)
 
     def selected_zarr_version(self) -> str:
-        return 'v2' if self.zarr_format.menus[0].selected_index == 0 else 'v3'
+        return 'v2' if self.zarr_format.menus[0].selected == 0 else 'v3'
 
     def bbox_to_slices(self):
         # convert the bounding box of the input data (real units) to a tuple of slices (indices)
