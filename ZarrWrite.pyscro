@@ -6,14 +6,6 @@ from pathlib import Path
 _container_extension = '.zarr'
 
 
-def detect_zarr_version(path: str):
-    p = Path(path)
-    if (p / '.zarray').exists() or (p / '.zgroup').exists():
-        return 'v2'
-    if (p / 'zarr.json').exists():
-        return 'v3'
-    return None
-
 
 def is_zarr_array(path: str) -> bool:
     p = Path(path)
@@ -87,10 +79,13 @@ def split_path_at_container(path: str):
 
 class ZarrWrite(PyScriptObject):
     def __init__(self):
-        self.data.valid_types = ['HxUniformScalarField3']                
+        self.data.valid_types = ['HxUniformScalarField3']
         self.do_it = HxPortDoIt(self, 'write', 'Save Zarr')
         self.output_dir = HxPortFilename(self, 'outputDir', 'Output Directory')
         self.output_dir.mode = HxPortFilename.LOAD_DIRECTORY
+        self.zarr_format = HxPortComboBox(self, 'zarrFormat', 'Zarr Format')
+        self.zarr_format.entries = ['Zarr v2 (ome-ngff 0.4)', 'Zarr v3 (ome-ngff 0.5)']
+        self.zarr_format.selected_index = 1
         self.container_path = None
         self.dataset_path = None
 
@@ -113,6 +108,7 @@ class ZarrWrite(PyScriptObject):
         ds_name = self.data.source().name.strip('-')
         node_path = self.container_path + self.dataset_path
 
+        zarr_version = self.selected_zarr_version()
         if is_zarr_array(node_path):
             existing = open_ts_array(node_path)
             if tuple(existing.shape) != output.shape:
@@ -121,17 +117,18 @@ class ZarrWrite(PyScriptObject):
             print('Saving {0} to {1}'.format(ds_name, node_path))
             existing[...].write(output).result()
             parent_dir = self.container_path if self.dataset_path == '' else str(Path(node_path).parent)
-            zarr_version = detect_zarr_version(node_path) or 'v3'
             self.add_multiscales_metadata(parent_dir, os.path.basename(node_path), zarr_version)
         else:
             array_dir = os.path.join(node_path, ds_name, 's0')
             group_dir = os.path.join(node_path, ds_name)
-            zarr_version = detect_zarr_version(node_path) or 'v3'
             print('Saving {0} to {1}'.format(ds_name, array_dir))
             ensure_group_metadata(node_path, zarr_version)
             ensure_group_metadata(group_dir, zarr_version)
             create_ts_array(array_dir, output, zarr_version)
             self.add_multiscales_metadata(group_dir, 's0', zarr_version)
+
+    def selected_zarr_version(self) -> str:
+        return 'v2' if self.zarr_format.selected_index == 0 else 'v3'
 
     def bbox_to_slices(self):
         # convert the bounding box of the input data (real units) to a tuple of slices (indices)
