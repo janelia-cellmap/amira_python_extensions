@@ -197,6 +197,9 @@ class ZarrRead(PyScriptObject):
         
         if not self.do_it.was_hit:
             return
+        if self.dataset is None:
+            hx_message.error(message='No array selected. Please choose a Zarr array first.')
+            return
 
         result = hx_project.create('HxUniformScalarField3')
         ch = self.channel.texts[0].value
