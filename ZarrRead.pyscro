@@ -64,7 +64,7 @@ def open_ts_array(path: str) -> ts.TensorStore:
     return ts.open({
         'driver': driver,
         'kvstore': {'driver': 'file', 'path': str(p)},
-    }).result()
+    }, write=False).result()
 
 
 def check_for_multiscale(group_path: str, container_root: str) -> Tuple[Optional[list], str]:
