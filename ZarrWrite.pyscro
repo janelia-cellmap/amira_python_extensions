@@ -83,7 +83,7 @@ class ZarrWrite(PyScriptObject):
         self.do_it = HxPortDoIt(self, 'write', 'Save Zarr')
         self.output_dir = HxPortFilename(self, 'outputDir', 'Output Directory')
         self.output_dir.mode = HxPortFilename.LOAD_DIRECTORY
-        self.zarr_format = HxPortMultiMenu(self, 'zarrFormat', 'Zarr Format', 1)
+        self.zarr_format = HxPortMultiMenu(self, 'zarrFormat', 'Zarr Format')
         self.zarr_format.menus[0].entries = ['Zarr v2 (ome-ngff 0.4)', 'Zarr v3 (ome-ngff 0.5)']
         self.zarr_format.menus[0].selected_index = 1
         self.container_path = None
