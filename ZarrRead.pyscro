@@ -184,11 +184,19 @@ class ZarrRead(PyScriptObject):
                 self.slice_textboxes[dim].texts[1].value = size
                 self.slices[dim] = slice(0, size)
         
+        if self.channel.is_new and self.ndim is not None:
+            ch = self.channel.texts[0].value
+            if self.ndim == 3 and ch != 0:
+                hx_message.error(message='Channel index must be 0 for a 3D array.')
+            elif self.ndim == 4:
+                max_ch = self.dataset.shape[0] - 1
+                if ch < 0 or ch > max_ch:
+                    hx_message.error(message='Channel index out of range. Choose within 0–{0}.'.format(max_ch))
+
         # if any of the textboxes have changed, then update the corresponding slices
         if any(s.is_new for s in self.slice_textboxes.values()):
             for d in self._dimensions:
-               self.slices[d] = slice(self.slice_textboxes[d].texts[0].value, self.slice_textboxes[d].texts[1].value)          
-        pass
+               self.slices[d] = slice(self.slice_textboxes[d].texts[0].value, self.slice_textboxes[d].texts[1].value)
 
     def update_info_box(self):
         if self.dataset is not None:
