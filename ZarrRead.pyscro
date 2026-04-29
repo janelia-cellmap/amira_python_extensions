@@ -211,6 +211,11 @@ class ZarrRead(PyScriptObject):
         if self.ndim == 3 and ch != 0:
             hx_message.error(message='Channel index must be 0 for a 3D array.')
             return
+        if self.ndim == 4:
+            max_ch = self.dataset.shape[0] - 1
+            if ch < 0 or ch > max_ch:
+                hx_message.error(message='Channel index out of range. Choose within 0–{0}.'.format(max_ch))
+                return
         spatial_slices = tuple(self.slices[d] for d in self._dimensions)[::-1]
         if any(sl.start == sl.stop for sl in spatial_slices):
             hx_message.error(message='Start and stop limits are the same along one of the (X, Y, Z) dimensions.')
