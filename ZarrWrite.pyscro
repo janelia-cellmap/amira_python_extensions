@@ -107,32 +107,31 @@ class ZarrWrite(PyScriptObject):
         if not self.do_it.was_hit:
             return
         if self.data.source() is None:
-            return    
-        # Slices and array have to be transposed b/c amira uses x,y,z axis ordering but we use z,y,x for 
-        # zarr
-        self.slices = self.bbox_to_slices()
+            return
+
         output = self.data.source().get_array().T
         ds_name = self.data.source().name.strip('-')
+        node_path = self.container_path + self.dataset_path
 
-        if isinstance(self.dataset, zarr.Group):   
-            print('Saving {0} to {1}'.format(ds_name, self.dataset.name))     
-            self.dataset[f'{ds_name}/s0'] = output
-            ds_name = self.data.source().name.strip('-')
-            self.add_multiscales_metadata(self.dataset[ds_name], 's0')
-            print("Added voxel size and offset attributes")
-            print('Save complete')
-            
-        elif isinstance(self.dataset, zarr.Array):
-            if self.dataset.shape==output.shape:
-                print('Preparing to save {0} to {1}'.format( self.data.source().name.strip('-'), self.dataset))
-                parent_group = self.access_parent(self.dataset)
-                ds_name = os.path.split(self.dataset.name)[-1]
-                zarr.save_array(store=self.dataset.store, path=self.dataset.path, arr=output)
-                self.add_multiscales_metadata(parent_group,  ds_name)
-                print("Added voxel size and offset attributes")
-                print('Save complete')
-            else:
-                hx_message.error(message="You're trying to store the amira array in the dataset with different dimensions")
+        if is_zarr_array(node_path):
+            existing = open_ts_array(node_path)
+            if tuple(existing.shape) != output.shape:
+                hx_message.error(message='Array dimensions do not match the target dataset.')
+                return
+            print('Saving {0} to {1}'.format(ds_name, node_path))
+            existing[...].write(output).result()
+            parent_dir = self.container_path if self.dataset_path == '' else str(Path(node_path).parent)
+            zarr_version = detect_zarr_version(node_path) or 'v3'
+            self.add_multiscales_metadata(parent_dir, os.path.basename(node_path), zarr_version)
+        else:
+            array_dir = os.path.join(node_path, ds_name, 's0')
+            group_dir = os.path.join(node_path, ds_name)
+            zarr_version = detect_zarr_version(node_path) or 'v3'
+            print('Saving {0} to {1}'.format(ds_name, array_dir))
+            ensure_group_metadata(node_path, zarr_version)
+            ensure_group_metadata(group_dir, zarr_version)
+            create_ts_array(array_dir, output, zarr_version)
+            self.add_multiscales_metadata(group_dir, 's0', zarr_version)
 
     def bbox_to_slices(self):
         # convert the bounding box of the input data (real units) to a tuple of slices (indices)
