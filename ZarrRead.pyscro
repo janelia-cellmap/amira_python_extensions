@@ -70,7 +70,11 @@ def open_ts_array(path: str) -> ts.TensorStore:
 def check_for_multiscale(group_path: str, container_root: str) -> Tuple[Optional[list], str]:
     """Recursively walk up the directory hierarchy searching for multiscales attribute."""
     attrs = read_attrs(group_path)
-    multiscales = attrs.get('multiscales', None)
+    version = detect_zarr_version(group_path)
+    if version == 'v3':
+        multiscales = attrs.get('ome', {}).get('multiscales')
+    else:
+        multiscales = attrs.get('multiscales')
     if multiscales:
         return (multiscales, group_path)
     if os.path.normpath(group_path) == os.path.normpath(container_root):
