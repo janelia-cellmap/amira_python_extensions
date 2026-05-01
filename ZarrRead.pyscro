@@ -70,7 +70,11 @@ def open_ts_array(path: str) -> ts.TensorStore:
 def check_for_multiscale(group_path: str, container_root: str) -> Tuple[Optional[list], str]:
     """Recursively walk up the directory hierarchy searching for multiscales attribute."""
     attrs = read_attrs(group_path)
-    multiscales = attrs.get('multiscales', None)
+    version = detect_zarr_version(group_path)
+    if version == 'v3':
+        multiscales = attrs.get('ome', {}).get('multiscales')
+    else:
+        multiscales = attrs.get('multiscales')
     if multiscales:
         return (multiscales, group_path)
     if os.path.normpath(group_path) == os.path.normpath(container_root):
@@ -127,6 +131,7 @@ class ZarrRead(PyScriptObject):
         self.resolution = None
         self.offset = None
         self.units = None
+        self._storage_axes = ['z', 'y', 'x']
 
         self.channel = HxPortIntTextN(self, 'channel', 'Channel')
         self.channel.texts = [HxPortIntTextN.IntText(label='Index', value=0)]
@@ -169,15 +174,20 @@ class ZarrRead(PyScriptObject):
             multiscales_result = check_for_multiscale(parent_dir, self.container_path)
             self.resolution, self.offset, self.units = get_resolution_and_offset(self.array_dir, ndim, multiscales_result)
             if ndim == 4:
-                # drop the leading channel axis from spatial metadata
                 self.resolution = self.resolution[-3:]
                 self.offset = self.offset[-3:]
                 self.units = self.units[-3:]
             else:
                 self.channel.texts[0].clamp_range = (0, 0)
+            multiscales, _ = multiscales_result
+            if multiscales and multiscales[0].get('axes'):
+                all_axes = [ax['name'] for ax in multiscales[0]['axes']]
+                self._storage_axes = [ax for ax in all_axes if ax in ('x', 'y', 'z')]
+            else:
+                self._storage_axes = ['z', 'y', 'x']
             self.update_info_box()
-            for ind, dim in enumerate(self._dimensions):
-                size = self.dataset.shape[::-1][ind]
+            for dim in self._dimensions:
+                size = self.dataset.shape[-3:][self._storage_axes.index(dim)]
                 for tb in self.slice_textboxes[dim].texts:
                     tb.clamp_range = (0, size)
                 self.slice_textboxes[dim].texts[0].value = 0
@@ -200,8 +210,9 @@ class ZarrRead(PyScriptObject):
 
     def update_info_box(self):
         if self.dataset is not None:
-            self.info.text = '{0} array with shape {1}'.format(
-                self.dataset.dtype.numpy_dtype, tuple(self.dataset.shape)[::-1])
+            shape_spatial = self.dataset.shape[-3:]
+            display_shape = tuple(shape_spatial[self._storage_axes.index(ax)] for ax in ('x', 'y', 'z'))
+            self.info.text = '{0} array with shape {1}'.format(self.dataset.dtype.numpy_dtype, display_shape)
         else:
             self.info.text = 'No array selected'
 
@@ -222,21 +233,26 @@ class ZarrRead(PyScriptObject):
             if ch < 0 or ch > max_ch:
                 hx_message.error(message='Channel index out of range. Choose within 0–{0}.'.format(max_ch))
                 return
-        spatial_slices = tuple(self.slices[d] for d in self._dimensions)[::-1]
+        spatial_slices = tuple(self.slices[ax] for ax in self._storage_axes)
         if any(sl.start == sl.stop for sl in spatial_slices):
             hx_message.error(message='Start and stop limits are the same along one of the (X, Y, Z) dimensions.')
             return
         result = hx_project.create('HxUniformScalarField3')
         ts_slices = (ch,) + spatial_slices if self.ndim == 4 else spatial_slices
-        array = self.dataset[ts_slices].read().result().T
-        shape_native_res = ((s - 1) * r for s, r in zip(array.shape, self.resolution[::-1]))
+        raw = self.dataset[ts_slices].read().result()
+        perm = [self._storage_axes.index(ax) for ax in ('x', 'y', 'z')]
+        array = np.transpose(raw, perm)
 
         if array.dtype in (np.dtype('uint64'), np.dtype('uint32')):
             array = array.astype('uint16')
         if array.dtype == np.dtype('int64'):
             array = array.astype('int32')
 
-        bbox_starts = tuple((r * s.start) + o for r, s, o in zip(self.resolution, spatial_slices, self.offset))[::-1]
+        resolution_xyz = [self.resolution[self._storage_axes.index(ax)] for ax in ('x', 'y', 'z')]
+        offset_xyz = [self.offset[self._storage_axes.index(ax)] for ax in ('x', 'y', 'z')]
+        slices_xyz = [self.slices[ax] for ax in ('x', 'y', 'z')]
+        shape_native_res = ((s - 1) * r for s, r in zip(array.shape, resolution_xyz))
+        bbox_starts = tuple((r * s.start) + o for r, s, o in zip(resolution_xyz, slices_xyz, offset_xyz))
         bbox_stops = tuple(o + s for o, s in zip(bbox_starts, shape_native_res))
 
         result.bounding_box = bbox_starts, bbox_stops
