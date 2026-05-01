@@ -185,12 +185,11 @@ class ZarrWrite(PyScriptObject):
     def add_multiscales_metadata(self, group_dir: str, ds_name: str, zarr_version: str):
         axes = ['z', 'y', 'x']
         unit = 'nanometer'
-        offset_vox = self.data.source().ports.PhysicalSize.text.split('from')[1].strip().split(', ')[::-1]
+        offset = self.data.source().ports.PhysicalSize.text.split('from')[1].strip().split(', ')[::-1]
         voxel_size = self.data.source().ports.VoxelSize.text.split(' x ')[::-1]
         voxel_size_f = [float(v) for v in voxel_size]
-        translation = [float(o) * v for o, v in zip(offset_vox, voxel_size_f)]
+        translation = [float(o) for o in offset]
 
-        version_str = '0.5' if zarr_version == 'v3' else '0.4'
         attrs: dict = {'multiscales': [{}]}
         attrs['multiscales'][0]['axes'] = [
             {'name': axis, 'type': 'space', 'unit': unit} for axis in axes
@@ -207,8 +206,7 @@ class ZarrWrite(PyScriptObject):
                 'path': ds_name,
             }
         ]
-        attrs['multiscales'][0]['name'] = ''
-        attrs['multiscales'][0]['version'] = version_str
+        attrs['multiscales'][0]['name'] = 'amira_export'
 
         p = Path(group_dir)
         if zarr_version == 'v3':
@@ -217,7 +215,8 @@ class ZarrWrite(PyScriptObject):
                 meta = json.loads(zarr_json_path.read_text())
             else:
                 meta = {'zarr_format': 3, 'node_type': 'group'}
-            meta['attributes'] = {'ome': attrs}
+            meta['attributes'] = {'ome': {'version': '0.5', **attrs}}
             zarr_json_path.write_text(json.dumps(meta, indent=2))
         else:
+            attrs['multiscales'][0]['version'] = '0.4'
             (p / '.zattrs').write_text(json.dumps(attrs, indent=2))
