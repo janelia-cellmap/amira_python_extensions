@@ -206,7 +206,7 @@ class ZarrWrite(PyScriptObject):
                 'path': ds_name,
             }
         ]
-        attrs['multiscales'][0]['name'] = ''
+        attrs['multiscales'][0]['name'] = 'amira_export'
 
         p = Path(group_dir)
         if zarr_version == 'v3':
