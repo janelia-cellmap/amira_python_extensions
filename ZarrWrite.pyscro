@@ -217,7 +217,7 @@ class ZarrWrite(PyScriptObject):
                 meta = json.loads(zarr_json_path.read_text())
             else:
                 meta = {'zarr_format': 3, 'node_type': 'group'}
-            meta['attributes'] = attrs
+            meta['attributes'] = {'ome': attrs}
             zarr_json_path.write_text(json.dumps(meta, indent=2))
         else:
             (p / '.zattrs').write_text(json.dumps(attrs, indent=2))
