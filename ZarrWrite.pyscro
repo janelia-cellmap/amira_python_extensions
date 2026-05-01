@@ -185,8 +185,10 @@ class ZarrWrite(PyScriptObject):
     def add_multiscales_metadata(self, group_dir: str, ds_name: str, zarr_version: str):
         axes = ['z', 'y', 'x']
         unit = 'nanometer'
-        offset = self.data.source().ports.PhysicalSize.text.split('from')[1].strip().split(', ')[::-1]
+        offset_vox = self.data.source().ports.PhysicalSize.text.split('from')[1].strip().split(', ')[::-1]
         voxel_size = self.data.source().ports.VoxelSize.text.split(' x ')[::-1]
+        voxel_size_f = [float(v) for v in voxel_size]
+        translation = [float(o) * v for o, v in zip(offset_vox, voxel_size_f)]
 
         version_str = '0.5' if zarr_version == 'v3' else '0.4'
         attrs: dict = {'multiscales': [{}]}
@@ -199,8 +201,8 @@ class ZarrWrite(PyScriptObject):
         attrs['multiscales'][0]['datasets'] = [
             {
                 'coordinateTransformations': [
-                    {'scale': [float(i) for i in voxel_size], 'type': 'scale'},
-                    {'translation': [float(i) for i in offset], 'type': 'translation'},
+                    {'scale': voxel_size_f, 'type': 'scale'},
+                    {'translation': translation, 'type': 'translation'},
                 ],
                 'path': ds_name,
             }
