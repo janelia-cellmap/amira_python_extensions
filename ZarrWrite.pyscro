@@ -190,7 +190,6 @@ class ZarrWrite(PyScriptObject):
         voxel_size_f = [float(v) for v in voxel_size]
         translation = [float(o) for o in offset]
 
-        version_str = '0.5' if zarr_version == 'v3' else '0.4'
         attrs: dict = {'multiscales': [{}]}
         attrs['multiscales'][0]['axes'] = [
             {'name': axis, 'type': 'space', 'unit': unit} for axis in axes
@@ -208,7 +207,6 @@ class ZarrWrite(PyScriptObject):
             }
         ]
         attrs['multiscales'][0]['name'] = ''
-        attrs['multiscales'][0]['version'] = version_str
 
         p = Path(group_dir)
         if zarr_version == 'v3':
@@ -217,7 +215,8 @@ class ZarrWrite(PyScriptObject):
                 meta = json.loads(zarr_json_path.read_text())
             else:
                 meta = {'zarr_format': 3, 'node_type': 'group'}
-            meta['attributes'] = {'ome': attrs}
+            meta['attributes'] = {'ome': {'version': '0.5', **attrs}}
             zarr_json_path.write_text(json.dumps(meta, indent=2))
         else:
+            attrs['multiscales'][0]['version'] = '0.4'
             (p / '.zattrs').write_text(json.dumps(attrs, indent=2))
