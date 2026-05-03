@@ -66,18 +66,9 @@ def create_ts_array(path: str, data: np.ndarray, zarr_version: str = 'v3') -> ts
 
 
 def ensure_group_metadata(path: str, zarr_version: str = 'v3'):
-    """Create group metadata file if the directory lacks it."""
-    p = Path(path)
-    p.mkdir(parents=True, exist_ok=True)
-    if zarr_version == 'v3':
-        zarr_json = p / 'zarr.json'
-        if not zarr_json.exists():
-            zarr_json.write_text(json.dumps(
-                {'zarr_format': 3, 'node_type': 'group', 'attributes': {}}, indent=2))
-    else:
-        zgroup = p / '.zgroup'
-        if not zgroup.exists():
-            zgroup.write_text(json.dumps({'zarr_format': 2}))
+    """Create zarr group if the directory lacks it."""
+    fmt = 3 if zarr_version == 'v3' else 2
+    zarr.open_group(str(path), mode='a', zarr_format=fmt)
 
 def split_path_at_container(path: str):
     # check whether a path contains a valid file path to a container file, and if so which container format it is
