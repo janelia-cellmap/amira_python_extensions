@@ -171,7 +171,7 @@ class ZarrWrite(PyScriptObject):
     def add_multiscales_metadata(self, group_dir: str, ds_name: str, zarr_version: str):
         axes = ['z', 'y', 'x']
         try:
-            unit = self.data.source().parameters.getValue("units") or 'nanometer'
+            unit = self.data.source().parameters['units'] or 'nanometer'
         except Exception:
             hx_message.error(message='Could not read units from field parameters. Defaulting to nanometer.')
             unit = 'nanometer'
