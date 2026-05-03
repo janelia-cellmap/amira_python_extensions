@@ -3,6 +3,7 @@ from pathlib import Path
 import numpy as np
 import os
 import json
+import zarr
 from typing import List, Tuple, Optional
 _container_extension = '.zarr'
 
@@ -29,13 +30,11 @@ def detect_zarr_version(path: str) -> Optional[str]:
 
 
 def is_zarr_array(path: str) -> bool:
-    p = Path(path)
-    if (p / '.zarray').exists():
-        return True
-    if (p / 'zarr.json').exists():
-        meta = json.loads((p / 'zarr.json').read_text())
-        return meta.get('node_type', 'array') == 'array'
-    return False
+    try:
+        node = zarr.open(str(path), mode='r')
+        return isinstance(node, zarr.Array)
+    except Exception:
+        return False
 
 
 def read_attrs(path: str) -> dict:
