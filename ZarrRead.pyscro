@@ -20,32 +20,12 @@ def split_path_at_container(path: str):
                 result[0] += parent.suffix
     return result
 
-def detect_zarr_version(path: str) -> Optional[str]:
-    p = Path(path)
-    if (p / '.zarray').exists() or (p / '.zgroup').exists():
-        return 'v2'
-    if (p / 'zarr.json').exists():
-        return 'v3'
-    return None
-
-
 def is_zarr_array(path: str) -> bool:
     try:
         node = zarr.open(str(path), mode='r')
         return isinstance(node, zarr.Array)
     except Exception:
         return False
-
-
-def read_attrs(path: str) -> dict:
-    """Read zarr attributes (.zattrs for v2, zarr.json["attributes"] for v3)."""
-    p = Path(path)
-    if (p / '.zattrs').exists():
-        return json.loads((p / '.zattrs').read_text())
-    if (p / 'zarr.json').exists():
-        meta = json.loads((p / 'zarr.json').read_text())
-        return meta.get('attributes', {})
-    return {}
 
 
 def open_ts_array(path: str) -> ts.TensorStore:
