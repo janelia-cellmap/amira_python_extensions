@@ -249,6 +249,6 @@ class ZarrRead(PyScriptObject):
 
         result.bounding_box = bbox_starts, bbox_stops
         result.set_array(array)
-        result.parameters.setValue("units", self.units[0] if self.units else 'nanometer')
+        result.parameters['units'] = self.units[0] if self.units else 'nanometer'
         result.name = self.dataset_path
         result.ports.master.connect(hx_project.get(self.name))
