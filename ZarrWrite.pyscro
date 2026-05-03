@@ -2,19 +2,18 @@ import tensorstore as ts
 import json
 import numpy as np
 import os
+import zarr
 from pathlib import Path
 _container_extension = '.zarr'
 
 
 
 def is_zarr_array(path: str) -> bool:
-    p = Path(path)
-    if (p / '.zarray').exists():
-        return True
-    if (p / 'zarr.json').exists():
-        meta = json.loads((p / 'zarr.json').read_text())
-        return meta.get('node_type', 'array') == 'array'
-    return False
+    try:
+        node = zarr.open(str(path), mode='r')
+        return isinstance(node, zarr.Array)
+    except Exception:
+        return False
 
 
 def open_ts_array(path: str) -> ts.TensorStore:
