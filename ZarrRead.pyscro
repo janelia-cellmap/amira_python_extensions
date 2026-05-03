@@ -160,20 +160,23 @@ class ZarrRead(PyScriptObject):
                 return
             self.ndim = ndim
             parent_dir = self.container_path if self.dataset_path == '' else str(Path(self.array_dir).parent)
-            multiscales_result = check_for_multiscale(parent_dir, self.container_path)
-            self.resolution, self.offset, self.units = get_resolution_and_offset(self.array_dir, ndim, multiscales_result)
+            ome_result = find_ome_image(parent_dir, self.container_path)
+            self.resolution, self.offset, self.units = get_resolution_and_offset(self.array_dir, ndim, ome_result)
             if ndim == 4:
                 self.resolution = self.resolution[-3:]
                 self.offset = self.offset[-3:]
                 self.units = self.units[-3:]
             else:
                 self.channel.texts[0].clamp_range = (0, 0)
-            multiscales, _ = multiscales_result
-            if multiscales and multiscales[0].get('axes'):
-                all_axes = [ax['name'] for ax in multiscales[0]['axes']]
-                self._storage_axes = [ax for ax in all_axes if ax in ('x', 'y', 'z')]
+
+            image, _ = ome_result
+            axes = get_axes(image) if image is not None else None
+            if axes:
+                all_names = [ax.name for ax in axes]
+                self._storage_axes = [n for n in all_names if n in ('x', 'y', 'z')]
             else:
                 self._storage_axes = ['z', 'y', 'x']
+
             self.update_info_box()
             for dim in self._dimensions:
                 size = self.dataset.shape[-3:][self._storage_axes.index(dim)]
