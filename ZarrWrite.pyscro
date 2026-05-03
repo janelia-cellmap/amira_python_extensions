@@ -18,19 +18,16 @@ def is_zarr_array(path: str) -> bool:
 
 def open_ts_array(path: str) -> ts.TensorStore:
     """Open an existing zarr array with tensorstore, auto-detecting v2/v3."""
-    p = Path(path)
-    if (p / '.zarray').exists():
-        driver = 'zarr'
-    elif (p / 'zarr.json').exists():
-        meta = json.loads((p / 'zarr.json').read_text())
-        if meta.get('node_type', 'array') != 'array':
+    try:
+        node = zarr.open(str(path), mode='r')
+        if not isinstance(node, zarr.Array):
             raise ValueError(f'{path} is a zarr group, not an array')
-        driver = 'zarr3'
-    else:
-        raise ValueError(f'No zarr array found at {path}')
+        driver = 'zarr3' if node.metadata.zarr_format == 3 else 'zarr'
+    except Exception as e:
+        raise ValueError(f'No zarr array found at {path}') from e
     return ts.open({
         'driver': driver,
-        'kvstore': {'driver': 'file', 'path': str(p)},
+        'kvstore': {'driver': 'file', 'path': str(path)},
     }).result()
 
 
