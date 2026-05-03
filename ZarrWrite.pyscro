@@ -1,5 +1,4 @@
 import tensorstore as ts
-import json
 import numpy as np
 import os
 import zarr
@@ -177,33 +176,25 @@ class ZarrWrite(PyScriptObject):
         voxel_size_f = [float(v) for v in voxel_size]
         translation = [float(o) for o in offset]
 
-        attrs: dict = {'multiscales': [{}]}
-        attrs['multiscales'][0]['axes'] = [
-            {'name': axis, 'type': 'space', 'unit': unit} for axis in axes
-        ]
-        attrs['multiscales'][0]['coordinateTransformations'] = [
-            {'scale': [1.0, 1.0, 1.0], 'type': 'scale'}
-        ]
-        attrs['multiscales'][0]['datasets'] = [
-            {
-                'coordinateTransformations': [
-                    {'scale': voxel_size_f, 'type': 'scale'},
-                    {'translation': translation, 'type': 'translation'},
-                ],
-                'path': ds_name,
-            }
-        ]
-        attrs['multiscales'][0]['name'] = 'amira_export'
+        multiscales_entry = {
+            'axes': [{'name': axis, 'type': 'space', 'unit': unit} for axis in axes],
+            'coordinateTransformations': [{'scale': [1.0, 1.0, 1.0], 'type': 'scale'}],
+            'datasets': [
+                {
+                    'coordinateTransformations': [
+                        {'scale': voxel_size_f, 'type': 'scale'},
+                        {'translation': translation, 'type': 'translation'},
+                    ],
+                    'path': ds_name,
+                }
+            ],
+            'name': 'amira_export',
+        }
 
-        p = Path(group_dir)
+        fmt = 3 if zarr_version == 'v3' else 2
+        grp = zarr.open_group(str(group_dir), mode='a', zarr_format=fmt)
         if zarr_version == 'v3':
-            zarr_json_path = p / 'zarr.json'
-            if zarr_json_path.exists():
-                meta = json.loads(zarr_json_path.read_text())
-            else:
-                meta = {'zarr_format': 3, 'node_type': 'group'}
-            meta['attributes'] = {'ome': {'version': '0.5', **attrs}}
-            zarr_json_path.write_text(json.dumps(meta, indent=2))
+            grp.attrs.update({'ome': {'version': '0.5', 'multiscales': [multiscales_entry]}})
         else:
-            attrs['multiscales'][0]['version'] = '0.4'
-            (p / '.zattrs').write_text(json.dumps(attrs, indent=2))
+            multiscales_entry['version'] = '0.4'
+            grp.attrs.update({'multiscales': [multiscales_entry]})
