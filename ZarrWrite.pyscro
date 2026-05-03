@@ -170,7 +170,11 @@ class ZarrWrite(PyScriptObject):
     
     def add_multiscales_metadata(self, group_dir: str, ds_name: str, zarr_version: str):
         axes = ['z', 'y', 'x']
-        unit = 'nanometer'
+        try:
+            unit = self.data.source().parameters.getValue("units") or 'nanometer'
+        except Exception:
+            hx_message.error(message='Could not read units from field parameters. Defaulting to nanometer.')
+            unit = 'nanometer'
         offset = self.data.source().ports.PhysicalSize.text.split('from')[1].strip().split(', ')[::-1]
         voxel_size = self.data.source().ports.VoxelSize.text.split(' x ')[::-1]
         voxel_size_f = [float(v) for v in voxel_size]
