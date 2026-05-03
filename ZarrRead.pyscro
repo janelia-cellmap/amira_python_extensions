@@ -2,8 +2,8 @@ import tensorstore as ts
 from pathlib import Path
 import numpy as np
 import os
-import json
 import zarr
+from ome_zarr_models import open_ome_zarr
 from typing import List, Tuple, Optional
 _container_extension = '.zarr'
 
@@ -43,19 +43,31 @@ def open_ts_array(path: str) -> ts.TensorStore:
     }, write=False).result()
 
 
-def check_for_multiscale(group_path: str, container_root: str) -> Tuple[Optional[list], str]:
-    """Recursively walk up the directory hierarchy searching for multiscales attribute."""
-    attrs = read_attrs(group_path)
-    version = detect_zarr_version(group_path)
-    if version == 'v3':
-        multiscales = attrs.get('ome', {}).get('multiscales')
-    else:
-        multiscales = attrs.get('multiscales')
-    if multiscales:
-        return (multiscales, group_path)
-    if os.path.normpath(group_path) == os.path.normpath(container_root):
-        return (None, group_path)
-    return check_for_multiscale(str(Path(group_path).parent), container_root)
+def find_ome_image(group_path: str, container_root: str) -> Tuple:
+    """Walk up from group_path to container_root, return first valid OME-Zarr Image found."""
+    path = group_path
+    while True:
+        try:
+            grp = zarr.open_group(str(path), mode='r')
+            image = open_ome_zarr(grp)
+            return image, path
+        except Exception:
+            pass
+        if os.path.normpath(path) == os.path.normpath(container_root):
+            return None, path
+        path = str(Path(path).parent)
+
+
+def get_axes(image) -> Optional[list]:
+    """Extract axes list from an OME-Zarr Image (handles v04 and v05 attribute layout)."""
+    try:
+        return image.ome_attributes.multiscales[0].axes
+    except AttributeError:
+        pass
+    try:
+        return image.ome_attributes.ome.multiscales[0].axes
+    except AttributeError:
+        return None
 
 
 def get_resolution_and_offset(array_dir: str, ndim: int,
