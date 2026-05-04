@@ -112,6 +112,7 @@ class ZarrRead(PyScriptObject):
         self.input_dir = HxPortFilename(self, 'inputDir', 'Input Directory')
         self.input_dir.mode = HxPortFilename.LOAD_DIRECTORY
         self.info = HxPortInfo(self, 'array_info', 'Array info')
+        self.units_info = HxPortInfo(self, 'units_info', 'Units')
         self.dataset = None
         self.container_path = None
         self.dataset_path = None
@@ -162,12 +163,14 @@ class ZarrRead(PyScriptObject):
             parent_dir = self.container_path if self.dataset_path == '' else str(Path(self.array_dir).parent)
             ome_result = find_ome_image(parent_dir, self.container_path)
             self.resolution, self.offset, self.units = get_resolution_and_offset(self.array_dir, ndim, ome_result)
+            display_units = list(self.units)
             if ndim == 4:
                 self.resolution = self.resolution[-3:]
                 self.offset = self.offset[-3:]
                 self.units = self.units[-3:]
             else:
                 self.channel.texts[0].clamp_range = (0, 0)
+            self.units_info.text = str(display_units)
 
             image, _ = ome_result
             axes = get_axes(image) if image is not None else None
