@@ -29,3 +29,6 @@ $AmiraRoot = Get-ChildItem $ProgramFiles -Directory |
 
 if (-not $AmiraRoot) { Fail "No Amira installation found under '$ProgramFiles'" }
 Write-Host "Using: $AmiraRoot"
+
+# 2. Verify EDM is present
+if (-not (Test-Path $EdmExe)) { Fail "EDM not found at '$EdmExe'" }
