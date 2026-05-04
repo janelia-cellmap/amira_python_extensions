@@ -15,3 +15,17 @@ $Packages = @("zarr==3.1.5", "numpy==1.26.4", "ome-zarr-models==1.7", "tensorsto
 
 function Write-Step($msg) { Write-Host "`n==> $msg" -ForegroundColor Cyan }
 function Fail($msg)       { Write-Host "ERROR: $msg" -ForegroundColor Red; exit 1 }
+
+# 1. Locate latest Amira installation
+Write-Step "Locating latest Amira installation"
+$ProgramFiles = [Environment]::GetFolderPath("ProgramFiles")
+$AmiraRoot = Get-ChildItem $ProgramFiles -Directory |
+    Where-Object { $_.Name -match '^Thermo Scientific Amira-Avizo3D\s+([\d.]+)' } |
+    Sort-Object {
+        $m = [regex]::Match($_.Name, '([\d.]+)$')
+        [System.Version]($m.Value + ".0")
+    } -Descending |
+    Select-Object -First 1 -ExpandProperty FullName
+
+if (-not $AmiraRoot) { Fail "No Amira installation found under '$ProgramFiles'" }
+Write-Host "Using: $AmiraRoot"
