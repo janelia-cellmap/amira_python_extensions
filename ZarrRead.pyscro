@@ -126,7 +126,7 @@ class ZarrRead(PyScriptObject):
         self.channel = HxPortIntTextN(self, 'channel', 'Channel')
         self.channel.texts = [HxPortIntTextN.IntText(label='Index', value=0)]
 
-        self._dimensions = ('x', 'y', 'z')
+        self._dimensions = ('z', 'y', 'x')
         self.slice_textboxes = dict()
         self.update_info_box()
 
@@ -254,4 +254,5 @@ class ZarrRead(PyScriptObject):
         result.set_array(array)
         result.parameters['units'] = self.units[0] if self.units else 'nanometer'
         result.name = self.dataset_path
+        # connect the resulting 3D data to the zarr loader object
         result.ports.master.connect(hx_project.get(self.name))
