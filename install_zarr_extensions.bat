@@ -45,3 +45,9 @@ if ($envList -match "\b$EdmEnv\b") {
     cmd /c `"$EdmExe`" envs import --force -f `"$BundleFile`" $EdmEnv
     if ($LASTEXITCODE -ne 0) { Fail "EDM environment creation failed (exit $LASTEXITCODE)" }
 }
+
+# 4. Install Python packages
+Write-Step "Installing packages into '$EdmEnv'"
+$pipArgs = "run -e $EdmEnv -- pip install " + ($Packages -join " ")
+cmd /c `"$EdmExe`" $pipArgs
+if ($LASTEXITCODE -ne 0) { Fail "pip install failed (exit $LASTEXITCODE)" }
