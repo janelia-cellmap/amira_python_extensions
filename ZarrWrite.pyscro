@@ -1,37 +1,32 @@
 import tensorstore as ts
-import json
 import numpy as np
 import os
+import zarr
 from pathlib import Path
 _container_extension = '.zarr'
 
 
 
 def is_zarr_array(path: str) -> bool:
-    p = Path(path)
-    if (p / '.zarray').exists():
-        return True
-    if (p / 'zarr.json').exists():
-        meta = json.loads((p / 'zarr.json').read_text())
-        return meta.get('node_type', 'array') == 'array'
-    return False
+    try:
+        node = zarr.open(str(path), mode='r')
+        return isinstance(node, zarr.Array)
+    except Exception:
+        return False
 
 
 def open_ts_array(path: str) -> ts.TensorStore:
     """Open an existing zarr array with tensorstore, auto-detecting v2/v3."""
-    p = Path(path)
-    if (p / '.zarray').exists():
-        driver = 'zarr'
-    elif (p / 'zarr.json').exists():
-        meta = json.loads((p / 'zarr.json').read_text())
-        if meta.get('node_type', 'array') != 'array':
+    try:
+        node = zarr.open(str(path), mode='r')
+        if not isinstance(node, zarr.Array):
             raise ValueError(f'{path} is a zarr group, not an array')
-        driver = 'zarr3'
-    else:
-        raise ValueError(f'No zarr array found at {path}')
+        driver = 'zarr3' if node.metadata.zarr_format == 3 else 'zarr'
+    except Exception as e:
+        raise ValueError(f'No zarr array found at {path}') from e
     return ts.open({
         'driver': driver,
-        'kvstore': {'driver': 'file', 'path': str(p)},
+        'kvstore': {'driver': 'file', 'path': str(path)},
     }).result()
 
 
@@ -70,18 +65,9 @@ def create_ts_array(path: str, data: np.ndarray, zarr_version: str = 'v3') -> ts
 
 
 def ensure_group_metadata(path: str, zarr_version: str = 'v3'):
-    """Create group metadata file if the directory lacks it."""
-    p = Path(path)
-    p.mkdir(parents=True, exist_ok=True)
-    if zarr_version == 'v3':
-        zarr_json = p / 'zarr.json'
-        if not zarr_json.exists():
-            zarr_json.write_text(json.dumps(
-                {'zarr_format': 3, 'node_type': 'group', 'attributes': {}}, indent=2))
-    else:
-        zgroup = p / '.zgroup'
-        if not zgroup.exists():
-            zgroup.write_text(json.dumps({'zarr_format': 2}))
+    """Create zarr group if the directory lacks it."""
+    fmt = 3 if zarr_version == 'v3' else 2
+    zarr.open_group(str(path), mode='a', zarr_format=fmt)
 
 def split_path_at_container(path: str):
     # check whether a path contains a valid file path to a container file, and if so which container format it is
@@ -101,15 +87,24 @@ class ZarrWrite(PyScriptObject):
     def __init__(self):
         self.data.valid_types = ['HxUniformScalarField3']
         self.do_it = HxPortDoIt(self, 'write', 'Save Zarr')
+        self.do_it.position = 4
         self.output_dir = HxPortFilename(self, 'outputDir', 'Output Directory')
         self.output_dir.mode = HxPortFilename.LOAD_DIRECTORY
+        self.output_dir.position = 1
         self.zarr_format = HxPortMultiMenu(self)
         self.zarr_format.menus = [
             HxPortButtonMenu.Menu(options=['Zarr v2', 'Zarr v3']),
         ]
         self.zarr_format.name = 'zarrFormat'
         self.zarr_format.label = 'Zarr Format'
-        self.zarr_format.position = 1
+        self.zarr_format.position = 2
+        self.units_menu = HxPortMultiMenu(self)
+        self.units_menu.menus = [
+            HxPortButtonMenu.Menu(options=['nanometer', 'micrometer', 'millimeter']),
+        ]
+        self.units_menu.name = 'voxelUnits'
+        self.units_menu.label = 'Voxel Units'
+        self.units_menu.position = 3
         self.container_path = None
         self.dataset_path = None
 
@@ -161,6 +156,9 @@ class ZarrWrite(PyScriptObject):
     def selected_zarr_version(self) -> str:
         return 'v2' if self.zarr_format.menus[0].selected == 0 else 'v3'
 
+    def selected_unit(self) -> str:
+        return ['nanometer', 'micrometer', 'millimeter'][self.units_menu.menus[0].selected]
+
     def bbox_to_slices(self):
         # convert the bounding box of the input data (real units) to a tuple of slices (indices)
         shape = self.data.source().get_array().shape
@@ -184,39 +182,31 @@ class ZarrWrite(PyScriptObject):
     
     def add_multiscales_metadata(self, group_dir: str, ds_name: str, zarr_version: str):
         axes = ['z', 'y', 'x']
-        unit = 'nanometer'
+        unit = self.selected_unit()
         offset = self.data.source().ports.PhysicalSize.text.split('from')[1].strip().split(', ')[::-1]
         voxel_size = self.data.source().ports.VoxelSize.text.split(' x ')[::-1]
         voxel_size_f = [float(v) for v in voxel_size]
         translation = [float(o) for o in offset]
 
-        attrs: dict = {'multiscales': [{}]}
-        attrs['multiscales'][0]['axes'] = [
-            {'name': axis, 'type': 'space', 'unit': unit} for axis in axes
-        ]
-        attrs['multiscales'][0]['coordinateTransformations'] = [
-            {'scale': [1.0, 1.0, 1.0], 'type': 'scale'}
-        ]
-        attrs['multiscales'][0]['datasets'] = [
-            {
-                'coordinateTransformations': [
-                    {'scale': voxel_size_f, 'type': 'scale'},
-                    {'translation': translation, 'type': 'translation'},
-                ],
-                'path': ds_name,
-            }
-        ]
-        attrs['multiscales'][0]['name'] = 'amira_export'
+        multiscales_entry = {
+            'axes': [{'name': axis, 'type': 'space', 'unit': unit} for axis in axes],
+            'coordinateTransformations': [{'scale': [1.0, 1.0, 1.0], 'type': 'scale'}],
+            'datasets': [
+                {
+                    'coordinateTransformations': [
+                        {'scale': voxel_size_f, 'type': 'scale'},
+                        {'translation': translation, 'type': 'translation'},
+                    ],
+                    'path': ds_name,
+                }
+            ],
+            'name': 'amira_export',
+        }
 
-        p = Path(group_dir)
+        fmt = 3 if zarr_version == 'v3' else 2
+        grp = zarr.open_group(str(group_dir), mode='a', zarr_format=fmt)
         if zarr_version == 'v3':
-            zarr_json_path = p / 'zarr.json'
-            if zarr_json_path.exists():
-                meta = json.loads(zarr_json_path.read_text())
-            else:
-                meta = {'zarr_format': 3, 'node_type': 'group'}
-            meta['attributes'] = {'ome': {'version': '0.5', **attrs}}
-            zarr_json_path.write_text(json.dumps(meta, indent=2))
+            grp.attrs.update({'ome': {'version': '0.5', 'multiscales': [multiscales_entry]}})
         else:
-            attrs['multiscales'][0]['version'] = '0.4'
-            (p / '.zattrs').write_text(json.dumps(attrs, indent=2))
+            multiscales_entry['version'] = '0.4'
+            grp.attrs.update({'multiscales': [multiscales_entry]})
