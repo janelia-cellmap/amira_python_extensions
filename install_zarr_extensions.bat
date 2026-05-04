@@ -51,3 +51,18 @@ Write-Step "Installing packages into '$EdmEnv'"
 $pipArgs = "run -e $EdmEnv -- pip install " + ($Packages -join " ")
 cmd /c `"$EdmExe`" $pipArgs
 if ($LASTEXITCODE -ne 0) { Fail "pip install failed (exit $LASTEXITCODE)" }
+
+# 5. Download scripts from GitHub and copy to Amira
+$ScriptsDir = Join-Path $AmiraRoot "share\python_script_objects"
+Write-Step "Deploying scripts to '$ScriptsDir'"
+if (-not (Test-Path $ScriptsDir)) {
+    New-Item -ItemType Directory -Path $ScriptsDir | Out-Null
+}
+
+foreach ($file in $Files) {
+    $dest = Join-Path $ScriptsDir $file
+    Write-Host "  $file"
+    Invoke-WebRequest -Uri "$RepoBase/$file" -OutFile $dest -UseBasicParsing
+}
+
+Write-Step "Done. Restart Amira to apply changes."
