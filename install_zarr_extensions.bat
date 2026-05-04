@@ -1,0 +1,17 @@
+# 2>nul & @echo off & powershell -ExecutionPolicy Bypass -File "%~f0" %* & pause & exit /b
+
+#Requires -Version 5.1
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = "Stop"
+
+# ── Configuration ─────────────────────────────────────────────────────────────
+$EdmEnv   = "hxEnv1"
+$EdmExe   = "$env:USERPROFILE\AppData\Local\Programs\Enthought\edm\edm.bat"
+$RepoBase = "https://raw.githubusercontent.com/janelia-cellmap/amira_python_extensions/master"
+$Files    = @("ZarrRead.pyscro", "ZarrRead.rc", "ZarrWrite.pyscro", "ZarrWrite.rc")
+$Packages = @("zarr==3.1.5", "numpy==1.26.4", "ome-zarr-models==1.7", "tensorstore==0.1.82")
+# ──────────────────────────────────────────────────────────────────────────────
+
+function Write-Step($msg) { Write-Host "`n==> $msg" -ForegroundColor Cyan }
+function Fail($msg)       { Write-Host "ERROR: $msg" -ForegroundColor Red; exit 1 }
