@@ -87,15 +87,24 @@ class ZarrWrite(PyScriptObject):
     def __init__(self):
         self.data.valid_types = ['HxUniformScalarField3']
         self.do_it = HxPortDoIt(self, 'write', 'Save Zarr')
+        self.do_it.position = 4
         self.output_dir = HxPortFilename(self, 'outputDir', 'Output Directory')
         self.output_dir.mode = HxPortFilename.LOAD_DIRECTORY
+        self.output_dir.position = 1
         self.zarr_format = HxPortMultiMenu(self)
         self.zarr_format.menus = [
             HxPortButtonMenu.Menu(options=['Zarr v2', 'Zarr v3']),
         ]
         self.zarr_format.name = 'zarrFormat'
         self.zarr_format.label = 'Zarr Format'
-        self.zarr_format.position = 1
+        self.zarr_format.position = 2
+        self.units_menu = HxPortMultiMenu(self)
+        self.units_menu.menus = [
+            HxPortButtonMenu.Menu(options=['nanometer', 'micrometer', 'millimeter']),
+        ]
+        self.units_menu.name = 'voxelUnits'
+        self.units_menu.label = 'Voxel Units'
+        self.units_menu.position = 3
         self.container_path = None
         self.dataset_path = None
 
@@ -147,6 +156,9 @@ class ZarrWrite(PyScriptObject):
     def selected_zarr_version(self) -> str:
         return 'v2' if self.zarr_format.menus[0].selected == 0 else 'v3'
 
+    def selected_unit(self) -> str:
+        return ['nanometer', 'micrometer', 'millimeter'][self.units_menu.menus[0].selected]
+
     def bbox_to_slices(self):
         # convert the bounding box of the input data (real units) to a tuple of slices (indices)
         shape = self.data.source().get_array().shape
@@ -170,11 +182,7 @@ class ZarrWrite(PyScriptObject):
     
     def add_multiscales_metadata(self, group_dir: str, ds_name: str, zarr_version: str):
         axes = ['z', 'y', 'x']
-        try:
-            unit = self.data.source().parameters['units'] or 'nanometer'
-        except Exception:
-            hx_message.error(message='Could not read units from field parameters. Defaulting to nanometer.')
-            unit = 'nanometer'
+        unit = self.selected_unit()
         offset = self.data.source().ports.PhysicalSize.text.split('from')[1].strip().split(', ')[::-1]
         voxel_size = self.data.source().ports.VoxelSize.text.split(' x ')[::-1]
         voxel_size_f = [float(v) for v in voxel_size]
