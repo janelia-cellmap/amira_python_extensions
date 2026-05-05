@@ -1,14 +1,13 @@
 # Amira Python Extensions
 
-Python script plugins for [Thermo Scientific Amira-Avizo 3D](https://www.thermofisher.com/amira-avizo) that add support for reading and writing Zarr, N5, and HDF5 datasets.
+Python script plugins for [Thermo Scientific Amira-Avizo 3D](https://www.thermofisher.com/amira-avizo) that add support for reading and writing Zarr.
 
 ## Project structure
 
 ```
 src/extensions/
 ├── zarr/   ZarrRead, ZarrWrite  — OME-NGFF / Zarr v2 and v3
-├── n5/     N5Read, N5Write      — N5 containers
-└── h5/     H5Loader             — HDF5 files
+├── n5/     N5Read, N5Write      — N5 containers (outdated, needs refactor)
 ```
 
 Each extension consists of two files: a `.pyscro` (Python script) and a `.rc` (resource/registration) file.
