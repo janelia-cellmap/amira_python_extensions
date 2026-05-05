@@ -6,7 +6,6 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 # === Configuration ===========================================================
-$EdmEnv   = "hxEnv1"
 $EdmExe   = "$env:USERPROFILE\AppData\Local\Programs\Enthought\edm\edm.bat"
 $RepoBase = "https://raw.githubusercontent.com/janelia-cellmap/amira_python_extensions/master/src/extensions/zarr"
 $Files    = @("ZarrRead.pyscro", "ZarrRead.rc", "ZarrWrite.pyscro", "ZarrWrite.rc")
@@ -33,18 +32,17 @@ Write-Host "Using: $AmiraRoot"
 # 2. Verify EDM is present
 if (-not (Test-Path $EdmExe)) { Fail "EDM not found at '$EdmExe'" }
 
-# 3. Create EDM environment from Amira's bundle (skip if already exists)
-Write-Step "Checking EDM environment '$EdmEnv'"
+# 3. Ask user which EDM environment to use
+Write-Step "Available EDM environments:"
 $envList = & $EdmExe envs list 2>&1
-if ($envList -match "\b$EdmEnv\b") {
-    Write-Host "Environment '$EdmEnv' already exists - skipping creation."
-} else {
-    $BundleFile = Join-Path $AmiraRoot "python\bundles\3dSoftware_win64.json"
-    if (-not (Test-Path $BundleFile)) { Fail "Amira bundle not found: '$BundleFile'" }
-    Write-Host "Creating environment from bundle..."
-    & $EdmExe envs import --force -f $BundleFile $EdmEnv
-    if ($LASTEXITCODE -ne 0) { Fail "EDM environment creation failed (exit $LASTEXITCODE)" }
+$envList | Write-Host
+Write-Host ""
+$EdmEnv = Read-Host "Enter the name of the Amira EDM environment to use"
+if (-not $EdmEnv) { Fail "No environment name provided." }
+if ($envList -notmatch "\b$EdmEnv\b") {
+    Fail "EDM environment '$EdmEnv' not found. Create it first inside Amira (Python -> Environment), then re-run this installer."
 }
+Write-Host "Using environment '$EdmEnv'."
 
 # 4. Install Python packages
 Write-Step "Installing packages into '$EdmEnv'"
