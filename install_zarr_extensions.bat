@@ -5,13 +5,13 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-# ── Configuration ─────────────────────────────────────────────────────────────
+# === Configuration ===========================================================
 $EdmEnv   = "hxEnv1"
 $EdmExe   = "$env:USERPROFILE\AppData\Local\Programs\Enthought\edm\edm.bat"
 $RepoBase = "https://raw.githubusercontent.com/janelia-cellmap/amira_python_extensions/master/src/extensions/zarr"
 $Files    = @("ZarrRead.pyscro", "ZarrRead.rc", "ZarrWrite.pyscro", "ZarrWrite.rc")
 $Packages = @("zarr==3.1.5", "numpy==1.26.4", "ome-zarr-models==1.7", "tensorstore==0.1.82")
-# ──────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 
 function Write-Step($msg) { Write-Host "`n==> $msg" -ForegroundColor Cyan }
 function Fail($msg)       { Write-Host "ERROR: $msg" -ForegroundColor Red; exit 1 }
@@ -37,7 +37,7 @@ if (-not (Test-Path $EdmExe)) { Fail "EDM not found at '$EdmExe'" }
 Write-Step "Checking EDM environment '$EdmEnv'"
 $envList = cmd /c `"$EdmExe`" envs list 2`>`&1
 if ($envList -match "\b$EdmEnv\b") {
-    Write-Host "Environment '$EdmEnv' already exists — skipping creation."
+    Write-Host "Environment '$EdmEnv' already exists - skipping creation."
 } else {
     $BundleFile = Join-Path $AmiraRoot "python\bundles\3dSoftware_win64.json"
     if (-not (Test-Path $BundleFile)) { Fail "Amira bundle not found: '$BundleFile'" }
