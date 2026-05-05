@@ -36,14 +36,18 @@ This step has to be done through the Amira GUI because it requires interactive a
 
 1. Download `install_zarr_extensions.bat` from the [Releases](../../releases) page.
 2. Double-click it and approve the UAC prompt so it runs as Administrator.
-3. When prompted, type the name of the EDM environment you just created (e.g. `hxEnv1`) and press Enter.
+3. The script lists every EDM environment under `~/.edm/envs/` as a numbered menu. Type the number of the environment you created (e.g. `hxEnv1`) and press Enter.
 4. The script will:
    - Find the latest Amira installation under `C:\Program Files\`
-   - Verify the chosen EDM environment exists
    - Install the additional Python packages: `zarr==3.1.5`, `numpy==1.26.4`, `ome-zarr-models==1.7`, `tensorstore==0.1.82`
    - Download the extension files from this repository and copy them to `<AmiraRoot>\share\python_script_objects\`
-   - Set the `HX_FORCE_PYTHON_PATH` environment variable to point Amira at the chosen environment
-5. Restart Amira.
+
+#### 3. Activate the environment in Amira
+
+1. Open Amira.
+2. From the menu bar, choose **Developer → Python Environments → Select Python Environment**.
+3. Pick the environment you set up (e.g. `hxEnv1`) from the list.
+4. Restart Amira so the new environment and extensions are loaded.
 
 ## Using the extensions
 
