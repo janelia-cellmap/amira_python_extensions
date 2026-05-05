@@ -16,7 +16,7 @@ Each extension consists of two files: a `.pyscro` (Python script) and a `.rc` (r
 
 ### Requirements
 
-- Thermo Scientific Amira-Avizo 3D (latest installed version is detected automatically)
+- Thermo Scientific Amira-Avizo 3D, version 2024.2 or higher (latest installed version is detected automatically) 
 - [Enthought Deployment Manager (EDM)](https://www.enthought.com/edm/) installed at the default location
 
 ### Steps
