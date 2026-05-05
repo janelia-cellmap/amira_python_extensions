@@ -74,7 +74,7 @@ foreach ($file in $Files) {
 # 6. Point Amira at the EDM environment
 Write-Step "Configuring Amira to use EDM environment '$EdmEnv'"
 $EnvPath = "$env:USERPROFILE\.edm\envs\$EdmEnv"
-[System.Environment]::SetEnvironmentVariable("HX_FORCE_PYTHON_PATH", $EnvPath, "Machine")
+[System.Environment]::SetEnvironmentVariable("HX_FORCE_PYTHON_PATH", $EnvPath, "User")
 Write-Host "HX_FORCE_PYTHON_PATH set to: $EnvPath"
 
 Write-Step "Done. Restart Amira to apply changes."
