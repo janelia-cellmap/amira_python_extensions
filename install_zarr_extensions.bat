@@ -33,15 +33,24 @@ Write-Host "Using: $AmiraRoot"
 if (-not (Test-Path $EdmExe)) { Fail "EDM not found at '$EdmExe'" }
 
 # 3. Ask user which EDM environment to use
-Write-Step "Available EDM environments:"
-$envList = & $EdmExe envs list 2>&1
-$envList | Write-Host
-Write-Host ""
-$EdmEnv = Read-Host "Enter the name of the Amira EDM environment to use"
-if (-not $EdmEnv) { Fail "No environment name provided." }
-if ($envList -notmatch "\b$EdmEnv\b") {
-    Fail "EDM environment '$EdmEnv' not found. Create it first inside Amira (Python -> Environment), then re-run this installer."
+Write-Step "Choose an EDM environment"
+$envsDir = "$env:USERPROFILE\.edm\envs"
+if (-not (Test-Path $envsDir)) {
+    Fail "No EDM environments found. Create one first inside Amira (Python -> Environment), then re-run this installer."
 }
+$envs = @(Get-ChildItem $envsDir -Directory | Select-Object -ExpandProperty Name)
+if ($envs.Count -eq 0) {
+    Fail "No EDM environments found. Create one first inside Amira (Python -> Environment), then re-run this installer."
+}
+for ($i = 0; $i -lt $envs.Count; $i++) {
+    Write-Host ("  [{0}] {1}" -f ($i + 1), $envs[$i])
+}
+$choice = Read-Host "Enter the number of the environment to use"
+$num = $choice -as [int]
+if ($null -eq $num -or $num -lt 1 -or $num -gt $envs.Count) {
+    Fail "Invalid selection: '$choice'."
+}
+$EdmEnv = $envs[$num - 1]
 Write-Host "Using environment '$EdmEnv'."
 
 # 4. Install Python packages
