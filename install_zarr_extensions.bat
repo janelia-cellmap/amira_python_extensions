@@ -35,21 +35,20 @@ if (-not (Test-Path $EdmExe)) { Fail "EDM not found at '$EdmExe'" }
 
 # 3. Create EDM environment from Amira's bundle (skip if already exists)
 Write-Step "Checking EDM environment '$EdmEnv'"
-$envList = cmd /c `"$EdmExe`" envs list 2`>`&1
+$envList = & $EdmExe envs list 2>&1
 if ($envList -match "\b$EdmEnv\b") {
     Write-Host "Environment '$EdmEnv' already exists - skipping creation."
 } else {
     $BundleFile = Join-Path $AmiraRoot "python\bundles\3dSoftware_win64.json"
     if (-not (Test-Path $BundleFile)) { Fail "Amira bundle not found: '$BundleFile'" }
     Write-Host "Creating environment from bundle..."
-    cmd /c `"$EdmExe`" envs import --force -f `"$BundleFile`" $EdmEnv
+    & $EdmExe envs import --force -f $BundleFile $EdmEnv
     if ($LASTEXITCODE -ne 0) { Fail "EDM environment creation failed (exit $LASTEXITCODE)" }
 }
 
 # 4. Install Python packages
 Write-Step "Installing packages into '$EdmEnv'"
-$pipArgs = "run -e $EdmEnv -- pip install " + ($Packages -join " ")
-cmd /c `"$EdmExe`" $pipArgs
+& $EdmExe run -e $EdmEnv -- pip install @Packages
 if ($LASTEXITCODE -ne 0) { Fail "pip install failed (exit $LASTEXITCODE)" }
 
 # 5. Download scripts from GitHub and copy to Amira
