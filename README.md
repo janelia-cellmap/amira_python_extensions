@@ -21,15 +21,28 @@ Each extension consists of two files: a `.pyscro` (Python script) and a `.rc` (r
 
 ### Steps
 
+#### 1. Create an EDM environment inside Amira
+
+This step has to be done through the Amira GUI because it requires interactive authentication with Enthought, which is needed to access the `ThermoScientific/3dSoftware` package repository.
+
+1. Launch Amira.
+2. From the menu bar, choose **Edit → Preferences → Python**.
+3. In the **Python Environment** section, click **Add** to create a new environment.
+4. Give it a name (e.g. `hxEnv1`) and click **OK**. Amira will prompt for your Enthought account credentials.
+5. Wait while Amira downloads and installs the base Python packages it needs. This can take several minutes.
+6. Once it finishes, the environment appears in the dropdown. Leave Amira open or close it - the environment persists.
+
+#### 2. Run the installer
+
 1. Download `install_zarr_extensions.bat` from the [Releases](../../releases) page.
-2. Double-click it.
-3. Approve the UAC prompt to allow the script to run as Administrator.
+2. Double-click it and approve the UAC prompt so it runs as Administrator.
+3. When prompted, type the name of the EDM environment you just created (e.g. `hxEnv1`) and press Enter.
 4. The script will:
    - Find the latest Amira installation under `C:\Program Files\`
-   - Create the `hxEnv1` EDM environment from Amira's bundled package specification (skipped if it already exists)
-   - Install the required Python packages: `zarr==3.1.5`, `numpy==1.26.4`, `ome-zarr-models==1.7`, `tensorstore==0.1.82`
+   - Verify the chosen EDM environment exists
+   - Install the additional Python packages: `zarr==3.1.5`, `numpy==1.26.4`, `ome-zarr-models==1.7`, `tensorstore==0.1.82`
    - Download the extension files from this repository and copy them to `<AmiraRoot>\share\python_script_objects\`
-   - Set the `HX_FORCE_PYTHON_PATH` environment variable to point Amira at the new environment
+   - Set the `HX_FORCE_PYTHON_PATH` environment variable to point Amira at the chosen environment
 5. Restart Amira.
 
 ## Using the extensions
