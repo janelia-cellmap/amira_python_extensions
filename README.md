@@ -35,7 +35,7 @@ This step has to be done through the Amira GUI because it requires interactive a
 #### 2. Run the installer
 
 1. Download `install_zarr_extensions.bat` from the [Releases](../../releases) page.
-2. Double-click it and approve the UAC prompt so it runs as Administrator.
+2. Right-click `install_zarr_extensions.bat` and choose to run it as Administrator.
 3. The script lists every EDM environment under `~/.edm/envs/` as a numbered menu. Type the number of the environment you created (e.g. `hxEnv1`) and press Enter.
 4. The script will:
    - Find the latest Amira installation under `C:\Program Files\`
