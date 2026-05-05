@@ -1,33 +1,71 @@
-# Python and TCL scripts for amira plugins
+# Amira Python Extensions
 
-These plugins add functionality to Amira (tested on Amira 3D 2021.1). 
+Python script plugins for [Thermo Scientific Amira-Avizo 3D](https://www.thermofisher.com/amira-avizo) that add support for reading and writing Zarr.
 
-Each plugin is composed of two files: a `$PLUGIN_NAME.rc` file and a `$PLUGIN_NAME.pyscro` file.  
+## Project structure
 
-To download, select the green Code button above, and "Download Zip". Extract the zip and proceed as follows:
+```
+src/extensions/
+├── zarr/   ZarrRead, ZarrWrite  — OME-NGFF / Zarr v2 and v3
+├── n5/     N5Read, N5Write      — N5 containers (outdated, needs refactor)
+```
 
-To use a plugin, copy both `rc` and `pyscro` files into the `$AMIRA_ROOT/share/python_script_objects/` directory before Amira starts up. You can also run (as Administrator) `copy_files.bat`, by double clicking, to copy all the `rc` and `pyscro` files.
+Each extension consists of two files: a `.pyscro` (Python script) and a `.rc` (resource/registration) file.
 
-To setup the necessary python environment, run Command Prompt as Administrator. Then copy and paste the following commands one at a time into the prompt:
-1. `curl https://package-data.enthought.com/edm/win_x86_64/2.0/edm_2.0.0_x86_64.msi -o %userprofile%\Downloads\edm_2.0.0_x86_64.msi`
-2. `set logfile=%userprofile%\amira_python_extension_log.txt`
-3. `%userprofile%\Downloads\edm_2.0.0_x86_64.msi >%logfile% 2>&1`
-4. `%userprofile%\AppData\Local\Programs\Enthought\edm\edm.bat envs import --force -f "C:\Program Files\Thermo Scientific Amira-Avizo3D 2021.1\python\bundles\3dSoftware_win64.json" hxEnv >>%logfile% 2>&1`
-5. `%userprofile%\AppData\Local\Programs\Enthought\edm\edm.bat run -e hxEnv pip install zarr numcodecs olefile et_xmlfile dask[array] >>%logfile% 2>&1`
-6. `setx HX_FORCE_PYTHON_PATH %userprofile%\.edm\envs\hxEnv >>%logfile% 2>&1`
+## Installation
 
-Wait for each step to finish before proceeding to the next and follow the prompts for installing Enthought. Some steps may take several seconds.
+### Requirements
 
-Once completed, open Amira and switch the `Python > Environment` to the 'User Environment' `hxEnv` if not already selected:
-![image](https://user-images.githubusercontent.com/19193291/139340964-56409662-e95f-4d14-8b4d-8a44a847d5b1.png)
+- Thermo Scientific Amira-Avizo 3D (latest installed version is detected automatically)
+- [Enthought Deployment Manager (EDM)](https://www.enthought.com/edm/) installed at the default location
 
-Deprecated: Run `setup_window_environment.bat` by double clicking it. If this does not work, you may have to copy and paste the commands from `setup_window_environment.bat` one at a time into the Command Prompt (run as Administrator).
+### Steps
 
-## `N5Read` instructions
-To load datasets from an N5 container, first open some data. It can be anything, e.g. one of the example datasets. (This step is necessary because Amira does not allow plugin-based data loaders) 
-Next, right-click on the data object in the project view and look for the "Python Scripts" category.  
-Click on it and you should see `N5Read` as one of the options.  
-Click on `N5Read`, then click `Create`.  
-This should create a N5Read object in the project view, which has an `Input File` property visible in the `Properties` pane.  
-Click on the `...` icon to the far right of the `Input File` text. This will trigger a file selection pop-up which you can use to find the  `N5` dataset you wish to load.  
-Once you select that dataset, select a bounding box of data to load with the X,Y,Z selection areas click `Apply` to load the data. If your `N5` container has `resolution` and `offset` attributes, this information will be used by Amira to localize the bounding box of the data in real coordinates. Once loaded, the data will appear in the Project View as a `Uniform-Scalar-Field*` object, which you can then manipulate as you wish.  
+#### 1. Create an EDM environment inside Amira
+
+This step has to be done through the Amira GUI because it requires interactive authentication with Enthought, which is needed to access the `ThermoScientific/3dSoftware` package repository.
+
+1. Launch Amira.
+2. From the menu bar, choose **Edit → Preferences → Python**.
+3. In the **Python Environment** section, click **Add** to create a new environment.
+4. Give it a name (e.g. `hxEnv1`) and click **OK**. Amira will prompt for your Enthought account credentials.
+5. Wait while Amira downloads and installs the base Python packages it needs. This can take several minutes.
+6. Once it finishes, the environment appears in the dropdown. Leave Amira open or close it - the environment persists.
+
+#### 2. Run the installer
+
+1. Download `install_zarr_extensions.bat` from the [Releases](../../releases) page.
+2. Double-click it and approve the UAC prompt so it runs as Administrator.
+3. When prompted, type the name of the EDM environment you just created (e.g. `hxEnv1`) and press Enter.
+4. The script will:
+   - Find the latest Amira installation under `C:\Program Files\`
+   - Verify the chosen EDM environment exists
+   - Install the additional Python packages: `zarr==3.1.5`, `numpy==1.26.4`, `ome-zarr-models==1.7`, `tensorstore==0.1.82`
+   - Download the extension files from this repository and copy them to `<AmiraRoot>\share\python_script_objects\`
+   - Set the `HX_FORCE_PYTHON_PATH` environment variable to point Amira at the chosen environment
+5. Restart Amira.
+
+## Using the extensions
+
+> **Note:** Amira does not allow plugin-based scripts to run without an existing data object. Before using any extension, open any data object first (e.g. one of Amira's built-in example datasets). Then right-click it in the Project View, go to **Python Scripts**, and select the extension you want.
+
+### ZarrRead
+
+Loads a Zarr array (v2 or v3) into Amira as a `HxUniformScalarField3`.
+
+- Supports 3D and 4D arrays (4D: select a channel index)
+- Reads OME-NGFF 0.4 and 0.5 metadata for voxel size, translation offset, and axis units
+- Displays array shape and units in the Properties panel
+- Supports partial loading via per-axis start/stop slice controls
+
+Right-click a data object → Python Scripts → `ZarrRead` → Create. Use the Input Directory picker to select a Zarr array folder, then click **Load Zarr**.
+
+### ZarrWrite
+
+Saves an `HxUniformScalarField3` as a Zarr array with OME-NGFF multiscales metadata.
+
+- Writes Zarr v2 or v3 (selectable)
+- Voxel size and translation offset are read from Amira's `VoxelSize` and `PhysicalSize` ports
+- Voxel unit is selectable: `nanometer`, `micrometer`, `millimeter`
+
+Right-click a scalar field → Python Scripts → `ZarrWrite` → Create. Choose an output directory, format, and units, then click **Save Zarr**.
