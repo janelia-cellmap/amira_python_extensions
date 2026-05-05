@@ -1,4 +1,4 @@
-# 2>nul & @echo off & powershell -ExecutionPolicy Bypass -File "%~f0" %* & pause & exit /b
+# 2>nul & @echo off & copy /y "%~f0" "%temp%\install_zarr_extensions.ps1" >nul & powershell -ExecutionPolicy Bypass -File "%temp%\install_zarr_extensions.ps1" %* & del "%temp%\install_zarr_extensions.ps1" >nul 2>&1 & pause & exit /b
 
 #Requires -Version 5.1
 
