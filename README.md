@@ -26,11 +26,11 @@ Each extension consists of two files: a `.pyscro` (Python script) and a `.rc` (r
 This step has to be done through the Amira GUI because it requires interactive authentication with Enthought, which is needed to access the `ThermoScientific/3dSoftware` package repository.
 
 1. Launch Amira.
-2. From the menu bar, choose **Edit → Preferences → Python**.
+2. From the menu bar, choose ** Developer → Python Environments → Create Python Environment**.
 3. In the **Python Environment** section, click **Add** to create a new environment.
-4. Give it a name (e.g. `hxEnv1`) and click **OK**. Amira will prompt for your Enthought account credentials.
-5. Wait while Amira downloads and installs the base Python packages it needs. This can take several minutes.
-6. Once it finishes, the environment appears in the dropdown. Leave Amira open or close it - the environment persists.
+4. Give it a name (e.g. `hxEnv1`) and click **OK**.
+6. Wait while Amira downloads and installs the base Python packages it needs. This can take several minutes.
+7. Once it finishes, the environment appears in the dropdown. Leave Amira open or close it - the environment persists.
 
 #### 2. Run the installer
 
