@@ -93,7 +93,7 @@ class ZarrWrite(PyScriptObject):
         self.output_dir.position = 1
         self.zarr_format = HxPortMultiMenu(self)
         self.zarr_format.menus = [
-            HxPortButtonMenu.Menu(options=['Zarr v2', 'Zarr v3']),
+            HxPortButtonMenu.Menu(options=['Zarr v3', 'Zarr v2']),
         ]
         self.zarr_format.name = 'zarrFormat'
         self.zarr_format.label = 'Zarr Format'
@@ -154,7 +154,7 @@ class ZarrWrite(PyScriptObject):
             self.add_multiscales_metadata(group_dir, 's0', zarr_version)
 
     def selected_zarr_version(self) -> str:
-        return 'v2' if self.zarr_format.menus[0].selected == 0 else 'v3'
+        return 'v3' if self.zarr_format.menus[0].selected == 0 else 'v2'
 
     def selected_unit(self) -> str:
         return ['nanometer', 'micrometer', 'millimeter'][self.units_menu.menus[0].selected]
