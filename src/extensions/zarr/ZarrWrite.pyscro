@@ -45,6 +45,7 @@ def create_ts_array(path: str, data: np.ndarray, zarr_version: str = 'v3') -> ts
                     {'name': 'bytes'},
                     {'name': 'zstd', 'configuration': {'level': 3}},
                 ],
+                'dimension_names': ['z', 'y', 'x'],
             },
         }
     else:
