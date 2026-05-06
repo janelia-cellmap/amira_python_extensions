@@ -3,6 +3,8 @@ import numpy as np
 import os
 import zarr
 from pathlib import Path
+from ome_zarr_models.v04.image import Multiscale as MultiscaleV04
+from ome_zarr_models.v05.image import Multiscale as MultiscaleV05
 _container_extension = '.zarr'
 
 
@@ -45,6 +47,7 @@ def create_ts_array(path: str, data: np.ndarray, zarr_version: str = 'v3') -> ts
                     {'name': 'bytes'},
                     {'name': 'zstd', 'configuration': {'level': 3}},
                 ],
+                'dimension_names': ['z', 'y', 'x'],
             },
         }
     else:
@@ -93,7 +96,7 @@ class ZarrWrite(PyScriptObject):
         self.output_dir.position = 1
         self.zarr_format = HxPortMultiMenu(self)
         self.zarr_format.menus = [
-            HxPortButtonMenu.Menu(options=['Zarr v2', 'Zarr v3']),
+            HxPortButtonMenu.Menu(options=['Zarr v3', 'Zarr v2']),
         ]
         self.zarr_format.name = 'zarrFormat'
         self.zarr_format.label = 'Zarr Format'
@@ -154,7 +157,7 @@ class ZarrWrite(PyScriptObject):
             self.add_multiscales_metadata(group_dir, 's0', zarr_version)
 
     def selected_zarr_version(self) -> str:
-        return 'v2' if self.zarr_format.menus[0].selected == 0 else 'v3'
+        return 'v3' if self.zarr_format.menus[0].selected == 0 else 'v2'
 
     def selected_unit(self) -> str:
         return ['nanometer', 'micrometer', 'millimeter'][self.units_menu.menus[0].selected]
@@ -203,10 +206,15 @@ class ZarrWrite(PyScriptObject):
             'name': 'amira_export',
         }
 
+        if zarr_version == 'v3':
+            MultiscaleV05.model_validate(multiscales_entry)
+        else:
+            multiscales_entry['version'] = '0.4'
+            MultiscaleV04.model_validate(multiscales_entry)
+
         fmt = 3 if zarr_version == 'v3' else 2
         grp = zarr.open_group(str(group_dir), mode='a', zarr_format=fmt)
         if zarr_version == 'v3':
             grp.attrs.update({'ome': {'version': '0.5', 'multiscales': [multiscales_entry]}})
         else:
-            multiscales_entry['version'] = '0.4'
             grp.attrs.update({'multiscales': [multiscales_entry]})
