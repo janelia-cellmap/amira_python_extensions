@@ -90,7 +90,7 @@ def get_resolution_and_offset(array_dir: str, ndim: int,
 
     if image is None:
         first_type = errors[0][1] if errors else 'NoError'
-        hx_message.error(message='No OME-Zarr multiscales found ({0}). See Python console for details.'.format(first_type))
+        hx_message.error(message='No OME-Zarr multiscales found ({0}). Using defaults: Resolution={1} nm, Offset={2} nm. See Python console for details.'.format(first_type, voxel_size, offset))
         print('No OME-Zarr multiscales metadata found. Using defaults: Resolution={0} nm, Offset={1} nm.'.format(voxel_size, offset))
         for p, t, m in errors:
             print('  {0}\n    {1}: {2}'.format(p, t, m))
