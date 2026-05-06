@@ -44,17 +44,22 @@ def open_ts_array(path: str) -> ts.TensorStore:
 
 
 def find_ome_image(group_path: str, container_root: str) -> Tuple:
-    """Walk up from group_path to container_root, return first valid OME-Zarr Image found."""
+    """Walk up from group_path to container_root, return first valid OME-Zarr Image found.
+
+    Returns (image, path, errors). On success, errors is empty. On failure (image is None),
+    errors contains (path, exception_type, message) for every level that was tried.
+    """
+    errors = []
     path = group_path
     while True:
         try:
             grp = zarr.open_group(str(path), mode='r')
             image = open_ome_zarr(grp)
-            return image, path
-        except Exception:
-            pass
+            return image, path, errors
+        except Exception as e:
+            errors.append((path, type(e).__name__, str(e)))
         if os.path.normpath(path) == os.path.normpath(container_root):
-            return None, path
+            return None, path, errors
         path = str(Path(path).parent)
 
 
@@ -81,10 +86,15 @@ def get_resolution_and_offset(array_dir: str, ndim: int,
     voxel_size = [1.0] * ndim
     offset = [0.0] * ndim
     units = ['nanometer'] * ndim
-    image, ms_dir = ome_result
+    image, ms_dir, errors = ome_result
 
     if image is None:
-        print('Multiscales not found. Using defaults: Resolution={0} nm, Offset={1} nm'.format(voxel_size, offset))
+        details = '\n'.join('  {0}\n    {1}: {2}'.format(p, t, m) for p, t, m in errors)
+        msg = ('No OME-Zarr multiscales metadata found. '
+               'Using defaults: Resolution={0} nm, Offset={1} nm.\n'
+               'Tried:\n{2}').format(voxel_size, offset, details)
+        hx_message.error(message=msg)
+        print(msg)
         return voxel_size, offset, units
 
     print('Found multiscales attributes')
@@ -182,7 +192,7 @@ class ZarrRead(PyScriptObject):
                 self.channel.texts[0].clamp_range = (0, 0)
             self.units_info.text = str(display_units)
 
-            image, _ = ome_result
+            image, _, _ = ome_result
             axes = get_axes(image) if image is not None else None
             if axes:
                 all_names = [ax.name for ax in axes]
