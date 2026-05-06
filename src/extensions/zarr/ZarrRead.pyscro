@@ -58,16 +58,22 @@ def find_ome_image(group_path: str, container_root: str) -> Tuple:
         path = str(Path(path).parent)
 
 
-def get_axes(image) -> Optional[list]:
-    """Extract axes list from an OME-Zarr Image (handles v04 and v05 attribute layout)."""
+def get_multiscales(image) -> Optional[list]:
+    """Return the multiscales list, handling v05 (ome wrapper) and v04 (no wrapper) layouts."""
+    attrs = image.attributes
     try:
-        return image.ome_attributes.multiscales[0].axes
+        return attrs.ome.multiscales
     except AttributeError:
         pass
     try:
-        return image.ome_attributes.ome.multiscales[0].axes
+        return attrs.multiscales
     except AttributeError:
         return None
+
+
+def get_axes(image) -> Optional[list]:
+    ms = get_multiscales(image)
+    return ms[0].axes if ms else None
 
 
 def get_resolution_and_offset(array_dir: str, ndim: int,
@@ -94,7 +100,11 @@ def get_resolution_and_offset(array_dir: str, ndim: int,
     else:
         print('Units not defined in multiscales. Using default: {0}'.format(units))
 
-    for ds in image.datasets[0]:
+    ms = get_multiscales(image)
+    if ms is None:
+        return voxel_size, offset, units
+
+    for ds in ms[0].datasets:
         if ds.path.lstrip('/') == rel_path.lstrip('/'):
             for ct in ds.coordinateTransformations:
                 if hasattr(ct, 'scale'):
