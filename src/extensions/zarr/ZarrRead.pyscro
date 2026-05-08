@@ -3,7 +3,6 @@ from pathlib import Path
 import numpy as np
 import os
 import zarr
-from ome_zarr_models import open_ome_zarr
 from typing import List, Tuple, Optional
 _container_extension = '.zarr'
 
@@ -43,19 +42,30 @@ def open_ts_array(path: str) -> ts.TensorStore:
     }, write=False).result()
 
 
-def find_ome_image(group_path: str, container_root: str) -> Tuple:
-    """Walk up from group_path to container_root, return first valid OME-Zarr Image found.
+def find_multiscales(group_path: str, container_root: str) -> Tuple:
+    """Walk up from group_path to container_root, return first OME-Zarr multiscales list found.
 
-    Returns (image, path, errors). On success, errors is empty. On failure (image is None),
-    errors contains (path, exception_type, message) for every level that was tried.
+    Reads raw attrs based on zarr format:
+      zarr v3 -> attrs['ome']['multiscales']  (OME-NGFF 0.5)
+      zarr v2 -> attrs['multiscales']         (OME-NGFF 0.4)
+
+    Returns (multiscales, ms_dir, errors). multiscales is a list of dicts (or None).
+    errors collects (path, exception_type, message) for paths where lookup failed.
     """
     errors = []
     path = group_path
     while True:
         try:
             grp = zarr.open_group(str(path), mode='r')
-            image = open_ome_zarr(grp)
-            return image, path, errors
+            attrs = dict(grp.attrs)
+            if grp.metadata.zarr_format == 3:
+                ome = attrs.get('ome')
+                ms = ome.get('multiscales') if isinstance(ome, dict) else None
+            else:
+                ms = attrs.get('multiscales')
+            if ms:
+                return ms, path, errors
+            errors.append((path, 'NoMultiscales', 'no multiscales attribute in this group'))
         except Exception as e:
             errors.append((path, type(e).__name__, str(e)))
         if os.path.normpath(path) == os.path.normpath(container_root):
@@ -63,32 +73,14 @@ def find_ome_image(group_path: str, container_root: str) -> Tuple:
         path = str(Path(path).parent)
 
 
-def get_multiscales(image) -> Optional[list]:
-    """Return the multiscales list, handling v05 (ome wrapper) and v04 (no wrapper) layouts."""
-    attrs = image.attributes
-    try:
-        return attrs.ome.multiscales
-    except AttributeError:
-        pass
-    try:
-        return attrs.multiscales
-    except AttributeError:
-        return None
-
-
-def get_axes(image) -> Optional[list]:
-    ms = get_multiscales(image)
-    return ms[0].axes if ms else None
-
-
 def get_resolution_and_offset(array_dir: str, ndim: int,
-                               ome_result: Tuple) -> Tuple[List[float], List[float], List[str]]:
+                               find_result: Tuple) -> Tuple[List[float], List[float], List[str]]:
     voxel_size = [1.0] * ndim
     offset = [0.0] * ndim
     units = ['nanometer'] * ndim
-    image, ms_dir, errors = ome_result
+    multiscales, ms_dir, errors = find_result
 
-    if image is None:
+    if multiscales is None:
         first_type = errors[0][1] if errors else 'NoError'
         hx_message.error(message='No OME-Zarr multiscales found ({0}). Using defaults: Resolution={1} nm, Offset={2} nm. See Python console for details.'.format(first_type, voxel_size, offset))
         print('No OME-Zarr multiscales metadata found. Using defaults: Resolution={0} nm, Offset={1} nm.'.format(voxel_size, offset))
@@ -98,28 +90,25 @@ def get_resolution_and_offset(array_dir: str, ndim: int,
 
     print('Found multiscales attributes')
 
+    ms = multiscales[0]
+    axes = ms.get('axes') or []
+    if axes:
+        units = [ax.get('unit') or ('' if ax.get('type') == 'channel' else 'nanometer') for ax in axes]
+    else:
+        print('Units not defined in multiscales. Using default: {0}'.format(units))
+
     try:
         rel_path = str(Path(array_dir).relative_to(ms_dir))
     except ValueError:
         rel_path = os.path.basename(array_dir)
 
-    axes = get_axes(image)
-    if axes:
-        units = [ax.unit or ('' if ax.type == 'channel' else 'nanometer') for ax in axes]
-    else:
-        print('Units not defined in multiscales. Using default: {0}'.format(units))
-
-    ms = get_multiscales(image)
-    if ms is None:
-        return voxel_size, offset, units
-
-    for ds in ms[0].datasets:
-        if ds.path.lstrip('/') == rel_path.lstrip('/'):
-            for ct in ds.coordinateTransformations:
-                if hasattr(ct, 'scale'):
-                    voxel_size = list(ct.scale)
-                elif hasattr(ct, 'translation'):
-                    offset = list(ct.translation)
+    for ds in ms.get('datasets') or []:
+        if ds.get('path', '').lstrip('/') == rel_path.lstrip('/'):
+            for ct in ds.get('coordinateTransformations') or []:
+                if 'scale' in ct:
+                    voxel_size = list(ct['scale'])
+                elif 'translation' in ct:
+                    offset = list(ct['translation'])
             return voxel_size, offset, units
 
     return voxel_size, offset, units
@@ -180,8 +169,8 @@ class ZarrRead(PyScriptObject):
                 return
             self.ndim = ndim
             parent_dir = self.container_path if self.dataset_path == '' else str(Path(self.array_dir).parent)
-            ome_result = find_ome_image(parent_dir, self.container_path)
-            self.resolution, self.offset, self.units = get_resolution_and_offset(self.array_dir, ndim, ome_result)
+            find_result = find_multiscales(parent_dir, self.container_path)
+            self.resolution, self.offset, self.units = get_resolution_and_offset(self.array_dir, ndim, find_result)
             display_units = list(self.units)
             if ndim == 4:
                 self.resolution = self.resolution[-3:]
@@ -191,10 +180,10 @@ class ZarrRead(PyScriptObject):
                 self.channel.texts[0].clamp_range = (0, 0)
             self.units_info.text = str(display_units)
 
-            image, _, _ = ome_result
-            axes = get_axes(image) if image is not None else None
+            multiscales, _, _ = find_result
+            axes = (multiscales[0].get('axes') or []) if multiscales else []
             if axes:
-                all_names = [ax.name for ax in axes]
+                all_names = [ax.get('name', '') for ax in axes]
                 self._storage_axes = [n for n in all_names if n in ('x', 'y', 'z')]
             else:
                 self._storage_axes = ['z', 'y', 'x']
