@@ -2,6 +2,7 @@ import tensorstore as ts
 import numpy as np
 import os
 import zarr
+import datetime
 from pathlib import Path
 from ome_zarr_models.v04.image import Multiscale as MultiscaleV04
 from ome_zarr_models.v05.image import Multiscale as MultiscaleV05
@@ -110,15 +111,17 @@ class ZarrWrite(PyScriptObject):
         self.units_menu.position = 3
         self.container_path = None
         self.dataset_path = None
+        self._auto_name_dir = None
 
     def update(self):
         if self.output_dir.is_new and self.output_dir.filenames is not None:
             if '.zarr' in self.output_dir.filenames:
                 self.container_path, self.dataset_path = split_path_at_container(self.output_dir.filenames)
+                self._auto_name_dir = None
             else:
-                dir_path = self.output_dir.filenames
-                self.container_path = self.if_name_exists(dir_path, 'amira_export', 0)
+                self.container_path = None
                 self.dataset_path = ''
+                self._auto_name_dir = self.output_dir.filenames
 
     def compute(self):
         if not self.do_it.was_hit:
@@ -128,7 +131,13 @@ class ZarrWrite(PyScriptObject):
 
         output = self.data.source().get_array().T
         ds_name = self.data.source().name.strip('-')
-        node_path = self.container_path + self.dataset_path
+        if self._auto_name_dir is not None:
+            timestamp = datetime.datetime.now().strftime('%Y-%m-%dT%H-%M-%S')
+            node_path = os.path.join(self._auto_name_dir, 'amira_export_{0}.zarr'.format(timestamp)).replace('\\', '/')
+            self.container_path = node_path
+            self.dataset_path = ''
+        else:
+            node_path = self.container_path + self.dataset_path
 
         zarr_version = self.selected_zarr_version()
         if is_zarr_array(node_path):
