@@ -29,8 +29,19 @@ $AmiraRoot = Get-ChildItem $ProgramFiles -Directory |
 if (-not $AmiraRoot) { Fail "No Amira installation found under '$ProgramFiles'" }
 Write-Host "Using: $AmiraRoot"
 
-# 2. Verify EDM is present
-if (-not (Test-Path $EdmExe)) { Fail "EDM not found at '$EdmExe'" }
+# 2. Verify EDM is present; download and install if missing
+if (-not (Test-Path $EdmExe)) {
+    Write-Step "EDM not found. Downloading and installing..."
+    $EdmInstallerUrl = "https://assets.enthought.com/downloads/installer/560/edm_4.1.0_win_x86_64.msi"
+    $EdmInstaller = Join-Path $env:TEMP "edm_4.1.0_win_x86_64.msi"
+    Write-Host "Downloading from $EdmInstallerUrl"
+    Invoke-WebRequest -Uri $EdmInstallerUrl -OutFile $EdmInstaller -UseBasicParsing
+    Write-Host "Installing EDM (msiexec /passive)"
+    $proc = Start-Process msiexec.exe -ArgumentList "/i `"$EdmInstaller`" /passive /norestart" -Wait -PassThru
+    if ($proc.ExitCode -ne 0) { Fail "EDM installation failed (msiexec exit $($proc.ExitCode))" }
+    if (-not (Test-Path $EdmExe)) { Fail "EDM was not installed at the expected location: $EdmExe" }
+    Write-Host "EDM installed."
+}
 
 # 3. Ask user which EDM environment to use
 Write-Step "Choose an EDM environment"
