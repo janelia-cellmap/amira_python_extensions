@@ -33,6 +33,12 @@ def open_ts_array(path: str) -> ts.TensorStore:
     }).result()
 
 
+def get_zarr_format(path: str) -> str:
+    """Return 'v3' or 'v2' for the zarr array at path."""
+    node = zarr.open(str(path), mode='r')
+    return 'v3' if node.metadata.zarr_format == 3 else 'v2'
+
+
 def create_ts_array(path: str, data: np.ndarray, zarr_version: str = 'v3') -> ts.TensorStore:
     """Create a new zarr array and write data into it."""
     Path(path).mkdir(parents=True, exist_ok=True)
@@ -141,6 +147,10 @@ class ZarrWrite(PyScriptObject):
 
         zarr_version = self.selected_zarr_version()
         if is_zarr_array(node_path):
+            existing_format = get_zarr_format(node_path)
+            if existing_format != zarr_version:
+                hx_message.error(message='Zarr format mismatch: target is {0} but selected format is {1}.'.format(existing_format, zarr_version))
+                return
             existing = open_ts_array(node_path)
             if tuple(existing.shape) != output.shape:
                 hx_message.error(message='Array dimensions do not match the target dataset.')
@@ -156,6 +166,10 @@ class ZarrWrite(PyScriptObject):
             ensure_group_metadata(node_path, zarr_version)
             ensure_group_metadata(group_dir, zarr_version)
             if is_zarr_array(array_dir):
+                existing_format = get_zarr_format(array_dir)
+                if existing_format != zarr_version:
+                    hx_message.error(message='Zarr format mismatch: target is {0} but selected format is {1}.'.format(existing_format, zarr_version))
+                    return
                 existing = open_ts_array(array_dir)
                 if tuple(existing.shape) != output.shape:
                     hx_message.error(message='Array dimensions do not match the target dataset.')
