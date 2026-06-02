@@ -73,6 +73,55 @@ def find_multiscales(group_path: str, container_root: str) -> Tuple:
         path = str(Path(path).parent)
 
 
+def classify_axes(axes_list, ndim):
+    """Classify OME-NGFF axes by type. Returns
+    ((axis_types, axis_names, spatial_indices, storage_axes, t_idx, c_idx, assumed_layout), None)
+    on success, or (None, error_message) on failure.
+
+    Fallbacks (when axis type metadata is absent):
+      ndim == 3 -> all axes assumed spatial (z, y, x)
+      ndim == 4 -> assume (c, z, y, x) for legacy compatibility
+      ndim == 5 -> rejected (caller errors)
+    assumed_layout is None when types came from metadata, or a string when we guessed.
+    """
+    axis_types = [ax.get('type') for ax in axes_list] if axes_list else [None] * ndim
+    axis_names = [ax.get('name', '') for ax in axes_list] if axes_list else []
+    assumed_layout = None
+
+    if not all(t in ('time', 'channel', 'space') for t in axis_types):
+        if ndim == 5:
+            return None, '5D arrays require axis type metadata (time/channel/space).'
+        elif ndim == 4:
+            axis_types = ['channel', 'space', 'space', 'space']
+            if not axis_names:
+                axis_names = ['c', 'z', 'y', 'x']
+            assumed_layout = '(c, z, y, x)'
+        else:
+            axis_types = ['space', 'space', 'space']
+            if not axis_names:
+                axis_names = ['z', 'y', 'x']
+            assumed_layout = '(z, y, x)'
+
+    t_indices = [i for i, t in enumerate(axis_types) if t == 'time']
+    c_indices = [i for i, t in enumerate(axis_types) if t == 'channel']
+    spatial_indices = [i for i, t in enumerate(axis_types) if t == 'space']
+
+    if len(t_indices) > 1:
+        return None, 'Multiple time axes are not supported.'
+    if len(c_indices) > 1:
+        return None, 'Multiple channel axes are not supported.'
+    if len(spatial_indices) != 3:
+        return None, 'Expected exactly 3 spatial axes, got {0}.'.format(len(spatial_indices))
+
+    storage_axes = [axis_names[i] for i in spatial_indices]
+    if set(storage_axes) != {'x', 'y', 'z'}:
+        return None, 'Spatial axes must be named x, y, z (got {0}).'.format(storage_axes)
+
+    t_idx = t_indices[0] if t_indices else None
+    c_idx = c_indices[0] if c_indices else None
+    return (axis_types, axis_names, spatial_indices, storage_axes, t_idx, c_idx, assumed_layout), None
+
+
 def get_resolution_and_offset(array_dir: str, ndim: int,
                                find_result: Tuple) -> Tuple[List[float], List[float], List[str]]:
     voxel_size = [1.0] * ndim
