@@ -56,6 +56,20 @@ CASES = [
          axes=[('space', 'z'), ('space', 'y'), ('space', 'x')],
          scale=[10, 20, 30], translation=[100, 200, 300],
          include_axes=False),
+
+    # ---- 4D ----
+    dict(name='4d_czyx', shape=(3, 5, 6, 7),
+         axes=[('channel', 'c'), ('space', 'z'), ('space', 'y'), ('space', 'x')],
+         scale=[1, 10, 20, 30], translation=[0, 100, 200, 300]),
+
+    dict(name='4d_tzyx', shape=(4, 5, 6, 7),
+         axes=[('time', 't'), ('space', 'z'), ('space', 'y'), ('space', 'x')],
+         scale=[1, 10, 20, 30], translation=[0, 100, 200, 300]),
+
+    dict(name='4d_no_axes_meta', shape=(3, 5, 6, 7),
+         axes=[('channel', 'c'), ('space', 'z'), ('space', 'y'), ('space', 'x')],
+         scale=[1, 10, 20, 30], translation=[0, 100, 200, 300],
+         include_axes=False),
 ]
 
 
