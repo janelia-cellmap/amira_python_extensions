@@ -179,6 +179,10 @@ class ZarrRead(PyScriptObject):
         self.offset = None
         self.units = None
         self._storage_axes = ['z', 'y', 'x']
+        self._axis_types = None
+        self._axis_names = None
+        self._spatial_indices = None
+        self._c_axis_idx = None
 
         self.channel = HxPortIntTextN(self, 'channel', 'Channel')
         self.channel.texts = [HxPortIntTextN.IntText(label='Index', value=0)]
@@ -219,39 +223,49 @@ class ZarrRead(PyScriptObject):
             self.ndim = ndim
             parent_dir = self.container_path if self.dataset_path == '' else str(Path(self.array_dir).parent)
             find_result = find_multiscales(parent_dir, self.container_path)
-            self.resolution, self.offset, self.units = get_resolution_and_offset(self.array_dir, ndim, find_result)
-            display_units = list(self.units)
-            if ndim == 4:
-                self.resolution = self.resolution[-3:]
-                self.offset = self.offset[-3:]
-                self.units = self.units[-3:]
-            else:
-                self.channel.texts[0].clamp_range = (0, 0)
-            self.units_info.text = str(display_units)
 
             multiscales, _, _ = find_result
             axes = (multiscales[0].get('axes') or []) if multiscales else []
-            if axes:
-                all_names = [ax.get('name', '') for ax in axes]
-                self._storage_axes = [n for n in all_names if n in ('x', 'y', 'z')]
-            else:
-                self._storage_axes = ['z', 'y', 'x']
+            classified, err = classify_axes(axes, ndim)
+            if classified is None:
+                hx_message.error(message='Axis layout error: {0}'.format(err))
+                return
+            (self._axis_types, self._axis_names, self._spatial_indices,
+             self._storage_axes, t_idx, self._c_axis_idx, assumed_layout) = classified
+            if t_idx is not None:
+                hx_message.error(message='Time axis is not supported for 3D/4D arrays.')
+                return
+            if assumed_layout:
+                hx_message.warning(message='Axis types not in metadata. Assumed layout: {0}.'.format(assumed_layout))
 
+            self.resolution, self.offset, self.units = get_resolution_and_offset(self.array_dir, ndim, find_result)
+            display_units = list(self.units)
+            self.resolution = [self.resolution[i] for i in self._spatial_indices]
+            self.offset = [self.offset[i] for i in self._spatial_indices]
+            self.units = [self.units[i] for i in self._spatial_indices]
+            self.units_info.text = str(display_units)
+
+            if self._c_axis_idx is None:
+                self.channel.texts[0].clamp_range = (0, 0)
+            else:
+                self.channel.texts[0].clamp_range = (0, self.dataset.shape[self._c_axis_idx] - 1)
+
+            spatial_shape = tuple(self.dataset.shape[i] for i in self._spatial_indices)
             self.update_info_box()
             for dim in self._dimensions:
-                size = self.dataset.shape[-3:][self._storage_axes.index(dim)]
+                size = spatial_shape[self._storage_axes.index(dim)]
                 for tb in self.slice_textboxes[dim].texts:
                     tb.clamp_range = (0, size)
                 self.slice_textboxes[dim].texts[0].value = 0
                 self.slice_textboxes[dim].texts[1].value = size
                 self.slices[dim] = slice(0, size)
-        
+
         if self.channel.is_new and self.ndim is not None:
             ch = self.channel.texts[0].value
-            if self.ndim == 3 and ch != 0:
-                hx_message.error(message='Channel index must be 0 for a 3D array.')
-            elif self.ndim == 4:
-                max_ch = self.dataset.shape[0] - 1
+            if self._c_axis_idx is None and ch != 0:
+                hx_message.error(message='This array has no channel axis; index must be 0.')
+            elif self._c_axis_idx is not None:
+                max_ch = self.dataset.shape[self._c_axis_idx] - 1
                 if ch < 0 or ch > max_ch:
                     hx_message.error(message='Channel index out of range. Choose within 0-{0}.'.format(max_ch))
 
@@ -261,8 +275,8 @@ class ZarrRead(PyScriptObject):
                self.slices[d] = slice(self.slice_textboxes[d].texts[0].value, self.slice_textboxes[d].texts[1].value)
 
     def update_info_box(self):
-        if self.dataset is not None:
-            shape_spatial = self.dataset.shape[-3:]
+        if self.dataset is not None and self._spatial_indices is not None:
+            shape_spatial = tuple(self.dataset.shape[i] for i in self._spatial_indices)
             display_shape = tuple(shape_spatial[self._storage_axes.index(ax)] for ax in ('x', 'y', 'z'))
             self.info.text = '{0} array with shape {1}'.format(self.dataset.dtype.numpy_dtype, display_shape)
         else:
@@ -277,21 +291,26 @@ class ZarrRead(PyScriptObject):
             return
 
         ch = self.channel.texts[0].value
-        if self.ndim == 3 and ch != 0:
-            hx_message.error(message='Channel index must be 0 for a 3D array.')
+        if self._c_axis_idx is None and ch != 0:
+            hx_message.error(message='This array has no channel axis; index must be 0.')
             return
-        if self.ndim == 4:
-            max_ch = self.dataset.shape[0] - 1
+        if self._c_axis_idx is not None:
+            max_ch = self.dataset.shape[self._c_axis_idx] - 1
             if ch < 0 or ch > max_ch:
-                hx_message.error(message='Channel index out of range. Choose within 0–{0}.'.format(max_ch))
+                hx_message.error(message='Channel index out of range. Choose within 0-{0}.'.format(max_ch))
                 return
         spatial_slices = tuple(self.slices[ax] for ax in self._storage_axes)
         if any(sl.start == sl.stop for sl in spatial_slices):
             hx_message.error(message='Start and stop limits are the same along one of the (X, Y, Z) dimensions.')
             return
         result = hx_project.create('HxUniformScalarField3')
-        ts_slices = (ch,) + spatial_slices if self.ndim == 4 else spatial_slices
-        raw = self.dataset[ts_slices].read().result()
+        ts_slices = [None] * self.ndim
+        for i, ax_type in enumerate(self._axis_types):
+            if ax_type == 'channel':
+                ts_slices[i] = ch
+            else:
+                ts_slices[i] = self.slices[self._axis_names[i]]
+        raw = self.dataset[tuple(ts_slices)].read().result()
         perm = [self._storage_axes.index(ax) for ax in ('x', 'y', 'z')]
         array = np.transpose(raw, perm)
 
