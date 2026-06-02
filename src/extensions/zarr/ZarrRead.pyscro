@@ -245,14 +245,10 @@ class ZarrRead(PyScriptObject):
             self.units = [self.units[i] for i in self._spatial_indices]
             self.units_info.text = str(display_units)
 
-            if self._c_axis_idx is None:
-                self.channel.texts[0].clamp_range = (0, 0)
-            else:
-                self.channel.texts[0].clamp_range = (0, self.dataset.shape[self._c_axis_idx] - 1)
-            if self._t_axis_idx is None:
-                self.time.texts[0].clamp_range = (0, 0)
-            else:
-                self.time.texts[0].clamp_range = (0, self.dataset.shape[self._t_axis_idx] - 1)
+            # No clamp_range on channel/time ports - we want validation warnings
+            # to fire when the user types out-of-range values, not silent clipping.
+            self.channel.texts[0].value = 0
+            self.time.texts[0].value = 0
 
             spatial_shape = tuple(self.dataset.shape[i] for i in self._spatial_indices)
             self.update_info_box()
