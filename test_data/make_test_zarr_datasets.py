@@ -38,7 +38,25 @@ import zarr
 # storage order), per-axis scale, per-axis translation.
 # Optional include_axes=False omits the axes from metadata (tests fallback).
 # ---------------------------------------------------------------------------
-CASES = []
+CASES = [
+    # ---- 3D ----
+    dict(name='3d_zyx', shape=(5, 6, 7),
+         axes=[('space', 'z'), ('space', 'y'), ('space', 'x')],
+         scale=[10, 20, 30], translation=[100, 200, 300]),
+
+    dict(name='3d_xyz', shape=(7, 6, 5),
+         axes=[('space', 'x'), ('space', 'y'), ('space', 'z')],
+         scale=[30, 20, 10], translation=[300, 200, 100]),
+
+    dict(name='3d_yzx', shape=(6, 5, 7),
+         axes=[('space', 'y'), ('space', 'z'), ('space', 'x')],
+         scale=[20, 10, 30], translation=[200, 100, 300]),
+
+    dict(name='3d_no_axes_meta', shape=(5, 6, 7),
+         axes=[('space', 'z'), ('space', 'y'), ('space', 'x')],
+         scale=[10, 20, 30], translation=[100, 200, 300],
+         include_axes=False),
+]
 
 
 def coord_encoded_array(shape):
