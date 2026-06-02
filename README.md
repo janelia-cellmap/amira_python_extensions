@@ -55,18 +55,21 @@ This step has to be done through the Amira GUI because it requires interactive a
 
 ### ZarrRead
 
-Loads a Zarr array (v2 or v3) into Amira as a `HxUniformScalarField3`.
+Loads a Zarr array (v2 or v3) into Amira as a `HxUniformScalarField3` in `(x, y, z)` axis order (Amira's convention).
 
-- Supports 3D and 4D arrays (4D: select a channel index)
-- Reads OME-NGFF 0.4 and 0.5 metadata for voxel size, translation offset, and axis units
-- Displays array shape and units in the Properties panel
-- Supports partial loading via per-axis start/stop slice controls
+- Works with 3D, 4D, and 5D arrays. For 4D and 5D, pick a Channel and/or Time index in the GUI and ZarrRead loads the matching 3D slab.
+- Time and Channel axes are identified by the OME-NGFF `axes[i].type` field (`time`, `channel`, `space`).
+- If axis types aren't in the metadata, ZarrRead falls back to the common layouts (`(z, y, x)` for 3D, `(c, z, y, x)` for 4D) and pops up an Amira warning so you know we guessed. 5D arrays without axis types are rejected.
+- Spatial axes can be stored in any order (`zyx`, `xyz`, `yzx`, etc.) — ZarrRead reads them in their on-disk order and transposes to `(x, y, z)` for you.
+- Reads OME-NGFF 0.4 and 0.5 metadata for voxel size, translation offset, and axis units.
+- Shows array shape and units in the Properties panel.
+- Supports partial loading via per-axis start/stop slice controls.
 
 Right-click a data object → Python Scripts → `ZarrRead` → Create. Use the Input Directory picker to select a Zarr array folder, then click **Load Zarr**.
 
 ### ZarrWrite
 
-Saves an `HxUniformScalarField3` as a Zarr array with OME-NGFF multiscales metadata.
+Saves an `HxUniformScalarField3` as a Zarr array with OME-NGFF multiscales metadata. The output is always written in `(z, y, x)` axis order on disk (the OME-NGFF canonical convention), regardless of the source axis order — the input field is transposed from Amira's `(x, y, z)` to `(z, y, x)` before writing, and `dimension_names` / `axes` in the metadata are set to `[z, y, x]` to match.
 
 - Writes Zarr v2 or v3 (selectable)
 - Voxel size and translation offset are read from Amira's `VoxelSize` and `PhysicalSize` ports
