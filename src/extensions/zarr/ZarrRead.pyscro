@@ -179,6 +179,7 @@ class ZarrRead(PyScriptObject):
         self.input_dir = HxPortFilename(self, 'inputDir', 'Input Directory')
         self.input_dir.mode = HxPortFilename.LOAD_DIRECTORY
         self.info = HxPortInfo(self, 'array_info', 'Array Info')
+        self.axes_info = HxPortInfo(self, 'axes_info', 'Axes order')
         self.units_info = HxPortInfo(self, 'units_info', 'Units')
         self.dataset = None
         self.container_path = None
@@ -226,6 +227,7 @@ class ZarrRead(PyScriptObject):
         for pos, port in enumerate([
             self.input_dir,
             self.info,
+            self.axes_info,
             self.units_info,
             self.slice_textboxes['x'],
             self.slice_textboxes['y'],
@@ -320,10 +322,12 @@ class ZarrRead(PyScriptObject):
                 self.slices[d] = slice(start, stop)
 
     def update_info_box(self):
-        if self.dataset is not None:
+        if self.dataset is not None and self._axis_names is not None:
             self.info.text = '{0} array with shape {1}'.format(self.dataset.dtype.numpy_dtype, tuple(self.dataset.shape))
+            self.axes_info.text = '({0})'.format(', '.join(self._axis_names))
         else:
             self.info.text = 'No array selected'
+            self.axes_info.text = ''
 
     def compute(self):
         
