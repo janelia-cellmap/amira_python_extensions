@@ -5,6 +5,12 @@ import os
 import zarr
 from typing import List, Tuple, Optional
 _container_extension = '.zarr'
+# Wide clamp_range upper bound for IntText ports. Amira's default cap is 10,
+# which clips typed values before our validation can see them. We set a wide
+# clamp here so the typed value reaches our per-dataset validation in update()
+# and compute(), which then produces a correct error message citing the actual
+# axis size.
+INT_MAX = 2**31 - 1
 
 def split_path_at_container(path: str):
     # check whether a path contains a valid file path to a container file, and if so which container format it is
@@ -191,8 +197,10 @@ class ZarrRead(PyScriptObject):
 
         self.channel = HxPortIntTextN(self, 'channel', 'Channel')
         self.channel.texts = [HxPortIntTextN.IntText(label='Index', value=0)]
+        self.channel.texts[0].clamp_range = (0, INT_MAX)
         self.time = HxPortIntTextN(self, 'time', 'Time')
         self.time.texts = [HxPortIntTextN.IntText(label='Index', value=0)]
+        self.time.texts[0].clamp_range = (0, INT_MAX)
 
         self._dimensions = ('z', 'y', 'x')
         self.slice_textboxes = dict()
@@ -208,6 +216,8 @@ class ZarrRead(PyScriptObject):
                                                                       value=0),
                                                HxPortIntTextN.IntText(label="Stop",
                                                                       value=0)]
+            for tb in self.slice_textboxes[dim].texts:
+                tb.clamp_range = (0, INT_MAX)
 
         self.slices = {d: slice(0, 1) for d in self._dimensions}
         self._spatial_size = {d: 0 for d in self._dimensions}
