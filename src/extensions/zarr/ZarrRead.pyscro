@@ -123,10 +123,14 @@ def classify_axes(axes_list, ndim):
 
 
 def get_resolution_and_offset(array_dir: str, ndim: int,
-                               find_result: Tuple) -> Tuple[List[float], List[float], List[str]]:
+                               find_result: Tuple,
+                               axis_types=None) -> Tuple[List[float], List[float], List[str]]:
     voxel_size = [1.0] * ndim
     offset = [0.0] * ndim
-    units = ['nanometer'] * ndim
+    if axis_types:
+        units = ['' if t == 'channel' else 'nanometer' for t in axis_types]
+    else:
+        units = ['nanometer'] * ndim
     multiscales, ms_dir, errors = find_result
 
     if multiscales is None:
@@ -253,7 +257,7 @@ class ZarrRead(PyScriptObject):
             if assumed_layout:
                 hx_message.warning(message='Axis types not in metadata. Assumed layout: {0}.'.format(assumed_layout))
 
-            self.resolution, self.offset, self.units = get_resolution_and_offset(self.array_dir, ndim, find_result)
+            self.resolution, self.offset, self.units = get_resolution_and_offset(self.array_dir, ndim, find_result, axis_types=self._axis_types)
             display_units = list(self.units)
             self.resolution = [self.resolution[i] for i in self._spatial_indices]
             self.offset = [self.offset[i] for i in self._spatial_indices]
