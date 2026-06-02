@@ -206,6 +206,7 @@ class ZarrRead(PyScriptObject):
                                                                       value=0)]
 
         self.slices = {d: slice(0, 1) for d in self._dimensions}
+        self._spatial_size = {d: 0 for d in self._dimensions}
     
 
     def update(self):
@@ -254,8 +255,8 @@ class ZarrRead(PyScriptObject):
             self.update_info_box()
             for dim in self._dimensions:
                 size = spatial_shape[self._storage_axes.index(dim)]
-                for tb in self.slice_textboxes[dim].texts:
-                    tb.clamp_range = (0, size)
+                self._spatial_size[dim] = size
+                # No clamp_range - we want validation warnings for out-of-range typing.
                 self.slice_textboxes[dim].texts[0].value = 0
                 self.slice_textboxes[dim].texts[1].value = size
                 self.slices[dim] = slice(0, size)
@@ -281,7 +282,14 @@ class ZarrRead(PyScriptObject):
         # if any of the textboxes have changed, then update the corresponding slices
         if any(s.is_new for s in self.slice_textboxes.values()):
             for d in self._dimensions:
-               self.slices[d] = slice(self.slice_textboxes[d].texts[0].value, self.slice_textboxes[d].texts[1].value)
+                start = self.slice_textboxes[d].texts[0].value
+                stop = self.slice_textboxes[d].texts[1].value
+                size = self._spatial_size[d]
+                if start < 0 or start > size or stop < 0 or stop > size:
+                    hx_message.error(message='{0} slice [{1}:{2}] out of range (must be within [0, {3}]).'.format(d.upper(), start, stop, size))
+                elif start > stop:
+                    hx_message.error(message='{0} slice start ({1}) must be <= stop ({2}).'.format(d.upper(), start, stop))
+                self.slices[d] = slice(start, stop)
 
     def update_info_box(self):
         if self.dataset is not None and self._spatial_indices is not None:
@@ -316,6 +324,15 @@ class ZarrRead(PyScriptObject):
             max_t = self.dataset.shape[self._t_axis_idx] - 1
             if t < 0 or t > max_t:
                 hx_message.error(message='Time index out of range. Choose within 0-{0}.'.format(max_t))
+                return
+        for d in self._dimensions:
+            sl = self.slices[d]
+            size = self._spatial_size[d]
+            if sl.start < 0 or sl.start > size or sl.stop < 0 or sl.stop > size:
+                hx_message.error(message='{0} slice [{1}:{2}] out of range (must be within [0, {3}]).'.format(d.upper(), sl.start, sl.stop, size))
+                return
+            if sl.start > sl.stop:
+                hx_message.error(message='{0} slice start ({1}) must be <= stop ({2}).'.format(d.upper(), sl.start, sl.stop))
                 return
         spatial_slices = tuple(self.slices[ax] for ax in self._storage_axes)
         if any(sl.start == sl.stop for sl in spatial_slices):
