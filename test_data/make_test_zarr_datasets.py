@@ -70,6 +70,22 @@ CASES = [
          axes=[('channel', 'c'), ('space', 'z'), ('space', 'y'), ('space', 'x')],
          scale=[1, 10, 20, 30], translation=[0, 100, 200, 300],
          include_axes=False),
+
+    # ---- 5D ----
+    dict(name='5d_tczyx', shape=(4, 3, 5, 6, 7),
+         axes=[('time', 't'), ('channel', 'c'),
+               ('space', 'z'), ('space', 'y'), ('space', 'x')],
+         scale=[1, 1, 10, 20, 30], translation=[0, 0, 100, 200, 300]),
+
+    dict(name='5d_tcxyz', shape=(4, 3, 7, 6, 5),
+         axes=[('time', 't'), ('channel', 'c'),
+               ('space', 'x'), ('space', 'y'), ('space', 'z')],
+         scale=[1, 1, 30, 20, 10], translation=[0, 0, 300, 200, 100]),
+
+    dict(name='5d_ztcyx', shape=(5, 4, 3, 6, 7),
+         axes=[('space', 'z'), ('time', 't'), ('channel', 'c'),
+               ('space', 'y'), ('space', 'x')],
+         scale=[10, 1, 1, 20, 30], translation=[100, 0, 0, 200, 300]),
 ]
 
 
