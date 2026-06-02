@@ -182,10 +182,13 @@ class ZarrRead(PyScriptObject):
         self._axis_types = None
         self._axis_names = None
         self._spatial_indices = None
+        self._t_axis_idx = None
         self._c_axis_idx = None
 
         self.channel = HxPortIntTextN(self, 'channel', 'Channel')
         self.channel.texts = [HxPortIntTextN.IntText(label='Index', value=0)]
+        self.time = HxPortIntTextN(self, 'time', 'Time')
+        self.time.texts = [HxPortIntTextN.IntText(label='Index', value=0)]
 
         self._dimensions = ('z', 'y', 'x')
         self.slice_textboxes = dict()
@@ -217,8 +220,8 @@ class ZarrRead(PyScriptObject):
                 return
             self.dataset = open_ts_array(self.array_dir)
             ndim = len(self.dataset.shape)
-            if ndim not in (3, 4):
-                hx_message.error(message='Only 3D and 4D arrays are supported (got {0}D).'.format(ndim))
+            if ndim not in (3, 4, 5):
+                hx_message.error(message='Only 3D, 4D, and 5D arrays are supported (got {0}D).'.format(ndim))
                 return
             self.ndim = ndim
             parent_dir = self.container_path if self.dataset_path == '' else str(Path(self.array_dir).parent)
@@ -231,10 +234,7 @@ class ZarrRead(PyScriptObject):
                 hx_message.error(message='Axis layout error: {0}'.format(err))
                 return
             (self._axis_types, self._axis_names, self._spatial_indices,
-             self._storage_axes, t_idx, self._c_axis_idx, assumed_layout) = classified
-            if t_idx is not None:
-                hx_message.error(message='Time axis is not supported for 3D/4D arrays.')
-                return
+             self._storage_axes, self._t_axis_idx, self._c_axis_idx, assumed_layout) = classified
             if assumed_layout:
                 hx_message.warning(message='Axis types not in metadata. Assumed layout: {0}.'.format(assumed_layout))
 
@@ -249,6 +249,10 @@ class ZarrRead(PyScriptObject):
                 self.channel.texts[0].clamp_range = (0, 0)
             else:
                 self.channel.texts[0].clamp_range = (0, self.dataset.shape[self._c_axis_idx] - 1)
+            if self._t_axis_idx is None:
+                self.time.texts[0].clamp_range = (0, 0)
+            else:
+                self.time.texts[0].clamp_range = (0, self.dataset.shape[self._t_axis_idx] - 1)
 
             spatial_shape = tuple(self.dataset.shape[i] for i in self._spatial_indices)
             self.update_info_box()
@@ -268,6 +272,15 @@ class ZarrRead(PyScriptObject):
                 max_ch = self.dataset.shape[self._c_axis_idx] - 1
                 if ch < 0 or ch > max_ch:
                     hx_message.error(message='Channel index out of range. Choose within 0-{0}.'.format(max_ch))
+
+        if self.time.is_new and self.ndim is not None:
+            t = self.time.texts[0].value
+            if self._t_axis_idx is None and t != 0:
+                hx_message.error(message='This array has no time axis; index must be 0.')
+            elif self._t_axis_idx is not None:
+                max_t = self.dataset.shape[self._t_axis_idx] - 1
+                if t < 0 or t > max_t:
+                    hx_message.error(message='Time index out of range. Choose within 0-{0}.'.format(max_t))
 
         # if any of the textboxes have changed, then update the corresponding slices
         if any(s.is_new for s in self.slice_textboxes.values()):
@@ -291,6 +304,7 @@ class ZarrRead(PyScriptObject):
             return
 
         ch = self.channel.texts[0].value
+        t = self.time.texts[0].value
         if self._c_axis_idx is None and ch != 0:
             hx_message.error(message='This array has no channel axis; index must be 0.')
             return
@@ -299,6 +313,14 @@ class ZarrRead(PyScriptObject):
             if ch < 0 or ch > max_ch:
                 hx_message.error(message='Channel index out of range. Choose within 0-{0}.'.format(max_ch))
                 return
+        if self._t_axis_idx is None and t != 0:
+            hx_message.error(message='This array has no time axis; index must be 0.')
+            return
+        if self._t_axis_idx is not None:
+            max_t = self.dataset.shape[self._t_axis_idx] - 1
+            if t < 0 or t > max_t:
+                hx_message.error(message='Time index out of range. Choose within 0-{0}.'.format(max_t))
+                return
         spatial_slices = tuple(self.slices[ax] for ax in self._storage_axes)
         if any(sl.start == sl.stop for sl in spatial_slices):
             hx_message.error(message='Start and stop limits are the same along one of the (X, Y, Z) dimensions.')
@@ -306,7 +328,9 @@ class ZarrRead(PyScriptObject):
         result = hx_project.create('HxUniformScalarField3')
         ts_slices = [None] * self.ndim
         for i, ax_type in enumerate(self._axis_types):
-            if ax_type == 'channel':
+            if ax_type == 'time':
+                ts_slices[i] = t
+            elif ax_type == 'channel':
                 ts_slices[i] = ch
             else:
                 ts_slices[i] = self.slices[self._axis_names[i]]
